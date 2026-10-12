@@ -32,7 +32,7 @@ for panel in dashboard["panels"]:
             query(target["expr"])
 assert query('up{job="master"}')[0]["value"][1] == "1", "Master scrape is down"
 assert all(sample["value"][1] == "1" for sample in query('up{job="monitoring"}'))
-probes = query("probe_success")
+probes = query('probe_success{check=~"Readiness|Public API"}')
 assert len(probes) == 2 and all(sample["value"][1] == "1" for sample in probes), "Readiness/public probe failed"
 assert query('agroal_active_count{job="master"} / agroal_max_size{job="master"}'), "Database pool metric is missing"
 assert float(query('time() - q3js_servers_refresh_completed_timestamp{job="master"}')[0]["value"][1]) < 60

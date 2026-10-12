@@ -31,7 +31,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "probe_success",
+          "expr": "probe_success{check=~\"Readiness|Public API\"}",
           "legendFormat": "{{check}}"
         }
       ],
