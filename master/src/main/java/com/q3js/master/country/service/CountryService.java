@@ -44,21 +44,17 @@ public class CountryService {
         try {
             if (Files.isRegularFile(databasePath)) {
                 reader = new DatabaseReader.Builder(databasePath.toFile()).build();
-                LOG.infof("Loaded GeoIP country database from %s", databasePath);
+                LOG.info("Loaded GeoIP country database from file");
                 return;
             }
 
             try (InputStream resource = getClass().getClassLoader().getResourceAsStream(databaseResource)) {
                 if (resource == null) {
-                    LOG.warnf(
-                        "GeoIP database not found at %s or classpath resource %s; country lookups will be unknown",
-                        databasePath,
-                        databaseResource
-                    );
+                    LOG.warn("GeoIP database not found; country lookups will be unknown");
                     return;
                 }
                 reader = new DatabaseReader.Builder(resource).build();
-                LOG.infof("Loaded GeoIP country database from classpath resource %s", databaseResource);
+                LOG.info("Loaded GeoIP country database from classpath");
             }
         } catch (IOException exception) {
             LOG.warnf(exception, "Unable to load GeoIP country database; country lookups will be unknown");

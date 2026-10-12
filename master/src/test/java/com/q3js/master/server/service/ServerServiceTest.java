@@ -17,6 +17,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ServerServiceTest {
     @Test
+    void recordsSnapshotsPruningAndAcceptedHeartbeatsWithoutPollingOnScrape() {
+        var registry = new io.micrometer.core.instrument.simple.SimpleMeterRegistry();
+        var repository = org.mockito.Mockito.mock(ServerRepository.class);
+        var client = org.mockito.Mockito.mock(ServerStatusClient.class);
+        var now = OffsetDateTime.now();
+        var old = new RegisteredServer("203.0.113.7", 27961, 27960, false, false, now);
+        var recent = new RegisteredServer("private-host", 27962, 27960, false, true, now);
+        org.mockito.Mockito.when(repository.findAll()).thenReturn(List.of(
+            new StoredServer(old, "{}", now.minusMinutes(1)),
+            new StoredServer(recent, "{}", now)
+        ));
+        org.mockito.Mockito.when(client.query(org.mockito.ArgumentMatchers.any())).thenReturn(java.util.Optional.empty());
+        org.mockito.Mockito.when(repository.deleteOlderThan(org.mockito.ArgumentMatchers.any())).thenReturn(3);
+        org.mockito.Mockito.when(repository.upsert(org.mockito.ArgumentMatchers.any())).thenReturn(old);
+        var service = new ServerService(repository, client, new ObjectMapper(), Duration.ofMinutes(5), registry);
+        service.refreshServers();
+        org.mockito.Mockito.clearInvocations(repository, client);
+        assertEquals(2, registry.get("q3js.servers.registered").gauge().value());
+        assertEquals(1, registry.get("q3js.servers.status.stale").gauge().value());
+        assertTrue(registry.get("q3js.servers.refresh.completed.timestamp").gauge().value() > 0);
+        org.mockito.Mockito.verifyNoInteractions(repository, client);
+        service.pruneServers();
+        assertEquals(3, registry.get("q3js.servers.pruned").counter().count());
+        var heartbeat = new com.q3js.master.server.dto.HeartbeatRequest("private-host", 27961, 27960, false);
+        service.register(heartbeat, true);
+        assertEquals(1, registry.get("q3js.heartbeats.accepted").tag("classification", "official").counter().count());
+        org.mockito.Mockito.when(repository.upsert(org.mockito.ArgumentMatchers.any())).thenThrow(new IllegalStateException());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> service.register(heartbeat, true));
+        assertEquals(1, registry.get("q3js.heartbeats.accepted").counter().count());
+        long completedAt = (long) registry.get("q3js.servers.refresh.completed.timestamp").gauge().value();
+        org.mockito.Mockito.when(repository.findAll()).thenThrow(new IllegalStateException());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, service::refreshServers);
+        assertEquals(completedAt, registry.get("q3js.servers.refresh.completed.timestamp").gauge().value());
+    }
+
+    @Test
     void addsPieterAsASecureCommunityServerBeforeRefreshing() {
         var repository = new ServerRepository(null) {
             private RegisteredServer inserted;
@@ -34,9 +70,10 @@ class ServerServiceTest {
         };
         ServerService service = new ServerService(
             repository,
-            new ServerStatusClient(new ServerStatusParser(), Duration.ofSeconds(1)),
+            new ServerStatusClient(new ServerStatusParser(), Duration.ofSeconds(1), new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             new ObjectMapper(),
-            Duration.ofMinutes(2)
+            Duration.ofMinutes(2),
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry()
         );
 
         service.refreshServers();
@@ -73,9 +110,10 @@ class ServerServiceTest {
         };
         ServerService service = new ServerService(
             repository,
-            new ServerStatusClient(new ServerStatusParser(), Duration.ofSeconds(1)),
+            new ServerStatusClient(new ServerStatusParser(), Duration.ofSeconds(1), new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             new ObjectMapper(),
-            Duration.ofMinutes(2)
+            Duration.ofMinutes(2),
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry()
         );
 
         assertEquals(
@@ -110,9 +148,10 @@ class ServerServiceTest {
         };
         ServerService service = new ServerService(
             repository,
-            new ServerStatusClient(new ServerStatusParser(), Duration.ofSeconds(1)),
+            new ServerStatusClient(new ServerStatusParser(), Duration.ofSeconds(1), new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
             new ObjectMapper(),
-            Duration.ofMinutes(2)
+            Duration.ofMinutes(2),
+            new io.micrometer.core.instrument.simple.SimpleMeterRegistry()
         );
 
         assertEquals(

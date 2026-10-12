@@ -5,6 +5,8 @@ import com.q3js.master.playerconnection.domain.PlayerAddressPage;
 import com.q3js.master.playerconnection.dto.PlayerConnectionRequest;
 import com.q3js.master.playerconnection.repository.PlayerConnectionRepository;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.BadRequestException;
 
@@ -21,9 +23,11 @@ public class PlayerConnectionService {
     private static final Set<String> PRIVATE_KEYS = Set.of("clientip", "ip", "password", "rconpassword");
 
     private final PlayerConnectionRepository repository;
+    private final Counter persistedConnections;
 
-    public PlayerConnectionService(PlayerConnectionRepository repository) {
+    public PlayerConnectionService(PlayerConnectionRepository repository, MeterRegistry metrics) {
         this.repository = repository;
+        persistedConnections = metrics.counter("q3js.player.connections.persisted");
     }
 
     public void ingest(PlayerConnectionRequest request, String sourceIp) {
@@ -48,6 +52,7 @@ public class PlayerConnectionService {
             ),
             sourceIp
         );
+        persistedConnections.increment();
     }
 
     public PlayerAddressPage addresses(int requestedPage, int pageSize, String search) {

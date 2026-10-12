@@ -1,0 +1,104 @@
+otelcol.receiver.otlp "master" {
+  grpc { endpoint = "0.0.0.0:4317" }
+  http { endpoint = "0.0.0.0:4318" }
+  output {
+    logs   = [otelcol.processor.memory_limiter.master.input]
+    traces = [otelcol.processor.memory_limiter.master.input]
+  }
+}
+otelcol.processor.memory_limiter "master" {
+  check_interval = "1s"
+  limit = "256MiB"
+  spike_limit = "64MiB"
+  output {
+    logs   = [otelcol.processor.transform.privacy.input]
+    traces = [otelcol.processor.transform.privacy.input]
+  }
+}
+// Allowlist fields so new automatic instrumentation cannot export private data.
+otelcol.processor.transform "privacy" {
+  error_mode = "propagate"
+  trace_statements {
+    context = "resource"
+    statements = [
+      `keep_keys(attributes, ["service.name", "service.version", "deployment.environment.name"])`,
+    ]
+  }
+  trace_statements {
+    context = "span"
+    statements = [
+      `set(name, Concat([attributes["http.request.method"], attributes["http.route"]], " ")) where attributes["http.route"] != nil and attributes["http.request.method"] != nil`,
+      `set(name, attributes["http.route"]) where attributes["http.route"] != nil and attributes["http.request.method"] == nil`,
+      `set(name, "http.request") where (attributes["http.request.method"] != nil or attributes["http.method"] != nil) and attributes["http.route"] == nil`,
+      `set(name, "database.query") where attributes["db.system"] != nil or attributes["db.system.name"] != nil`,
+      `set(status.message, "")`,
+      `keep_keys(attributes, ["http.route", "http.request.method", "http.method", "http.response.status_code", "http.status_code", "db.system", "db.system.name", "q3js.outcome", "code.function", "code.namespace"])`,
+    ]
+  }
+  trace_statements {
+    context = "spanevent"
+    statements = [`keep_keys(attributes, ["exception.type"])`]
+  }
+  log_statements {
+    context = "resource"
+    statements = [`keep_keys(attributes, ["service.name", "service.version", "deployment.environment.name"])`]
+  }
+  log_statements {
+    context = "log"
+    statements = [
+      `set(body, "Framework log; details retained in private container logs") where attributes["bridge.name"] == nil or not IsMatch(attributes["bridge.name"], "^com[.]q3js[.]master[.]")`,
+      `keep_keys(attributes, ["bridge.name", "exception.type"])`,
+    ]
+  }
+  output {
+    logs   = [otelcol.processor.batch.master.input]
+    traces = [otelcol.processor.batch.master.input]
+  }
+}
+otelcol.processor.batch "master" {
+  timeout = "5s"
+  send_batch_size = 512
+  send_batch_max_size = 1024
+  output {
+    logs   = [otelcol.exporter.otlphttp.loki.input]
+    traces = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+otelcol.exporter.otlphttp "loki" {
+  client { endpoint = "http://loki:3100/otlp" }
+}
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+    tls { insecure = true }
+  }
+}
+prometheus.scrape "master" {
+  targets = [{"__address__" = sys.env("MASTER_METRICS_ADDRESS"), "job" = "master", "environment" = "production"}]
+  metrics_path = "/q/metrics"
+  scrape_interval = "15s"
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+prometheus.exporter.blackbox "master" {
+  config = "{modules: {http_2xx: {prober: http, timeout: 5s, http: {preferred_ip_protocol: ip4}}}}"
+  target {
+    name = "master-readiness"
+    address = sys.env("MASTER_INTERNAL_URL") + "/q/health/ready"
+    module = "http_2xx"
+    labels = {"environment" = "production"}
+  }
+  target {
+    name = "master-public"
+    address = sys.env("MASTER_PUBLIC_URL")
+    module = "http_2xx"
+    labels = {"environment" = "production"}
+  }
+}
+prometheus.scrape "probes" {
+  targets = prometheus.exporter.blackbox.master.targets
+  scrape_interval = "15s"
+  forward_to = [prometheus.remote_write.local.receiver]
+}
+prometheus.remote_write "local" {
+  endpoint { url = "http://prometheus:9090/api/v1/write" }
+}

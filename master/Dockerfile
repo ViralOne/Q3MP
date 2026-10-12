@@ -29,7 +29,7 @@ ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0" \
     Q3JS_ADMIN_JWT_PRIVATE_KEY_LOCATION=/state/q3js-admin-private-key.pem \
     Q3JS_ADMIN_JWT_PUBLIC_KEY_LOCATION=/state/q3js-admin-public-key.pem
 
-EXPOSE 8080
+EXPOSE 8080 9000
 VOLUME ["/state"]
 USER q3js
 

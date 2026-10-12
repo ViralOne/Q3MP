@@ -1,0 +1,76 @@
+services:
+  grafana:
+    image: grafana/grafana:13.2.3
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://grafana.q3js.com}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks: [monitoring, dokploy-network]
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    restart: unless-stopped
+    mem_limit: 1g
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=10GB
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [monitoring]
+  loki:
+    image: grafana/loki:3.7.8
+    restart: unless-stopped
+    mem_limit: 1g
+    command: [-config.file=/etc/loki/config.yml]
+    volumes:
+      - ./loki.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    networks: [monitoring]
+  tempo:
+    image: grafana/tempo:2.10.8
+    restart: unless-stopped
+    mem_limit: 1g
+    command: [-config.file=/etc/tempo/config.yml]
+    volumes:
+      - ./tempo.yml:/etc/tempo/config.yml:ro
+      - tempo-data:/var/tempo
+    networks: [monitoring]
+  alloy:
+    image: grafana/alloy:v1.20.1
+    restart: unless-stopped
+    mem_limit: 512m
+    command: [run, --server.http.listen-addr=0.0.0.0:12345, --storage.path=/var/lib/alloy, /etc/alloy/config.alloy]
+    environment:
+      MASTER_INTERNAL_URL: ${MASTER_INTERNAL_URL:-http://app-calculate-solid-state-application-eaw8z1:8080}
+      MASTER_METRICS_ADDRESS: ${MASTER_METRICS_ADDRESS:-app-calculate-solid-state-application-eaw8z1:9000}
+      MASTER_PUBLIC_URL: ${MASTER_PUBLIC_URL:-https://master.q3js.com/api/status}
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy
+    networks:
+      monitoring:
+      dokploy-network:
+        aliases: [q3js-observability-alloy]
+networks:
+  monitoring:
+  dokploy-network:
+    external: true
+volumes:
+  grafana-data:
+  prometheus-data:
+  loki-data:
+  tempo-data:
+  alloy-data:

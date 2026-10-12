@@ -9,6 +9,8 @@ import com.q3js.master.server.dto.HeartbeatRequest;
 import com.q3js.master.server.dto.ServerInfo;
 import com.q3js.master.server.dto.ServerResponse;
 import com.q3js.master.server.repository.ServerRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -30,17 +32,28 @@ public class ServerService {
     private final ServerStatusClient statusClient;
     private final ObjectMapper objectMapper;
     private final Duration heartbeatTtl;
+    private final MeterRegistry metrics;
+    private final Counter prunedServers;
+    private volatile int registeredServers;
+    private volatile int staleStatuses;
+    private volatile long refreshCompletedAt;
 
     public ServerService(
         ServerRepository repository,
         ServerStatusClient statusClient,
         ObjectMapper objectMapper,
-        @ConfigProperty(name = "q3js.master.heartbeat-ttl") Duration heartbeatTtl
+        @ConfigProperty(name = "q3js.master.heartbeat-ttl") Duration heartbeatTtl,
+        MeterRegistry metrics
     ) {
         this.repository = repository;
         this.statusClient = statusClient;
         this.objectMapper = objectMapper;
         this.heartbeatTtl = heartbeatTtl;
+        this.metrics = metrics;
+        prunedServers = metrics.counter("q3js.servers.pruned");
+        metrics.gauge("q3js.servers.registered", this, service -> service.registeredServers);
+        metrics.gauge("q3js.servers.status.stale", this, service -> service.staleStatuses);
+        metrics.gauge("q3js.servers.refresh.completed.timestamp", this, service -> service.refreshCompletedAt);
     }
 
     public void register(HeartbeatRequest heartbeat, boolean official) {
@@ -52,6 +65,7 @@ public class ServerService {
             official,
             OffsetDateTime.now()
         ));
+        metrics.counter("q3js.heartbeats.accepted", "classification", official ? "official" : "community").increment();
         refresh(server);
     }
 
@@ -101,9 +115,17 @@ public class ServerService {
     void refreshServers() {
         addIfMissing(PIETER_HOST, DEFAULT_SECURE_PROXY_PORT, true);
 
-        for (StoredServer stored : repository.findAll()) {
-            refresh(stored.server());
+        List<StoredServer> servers = repository.findAll();
+        int stale = 0;
+        for (StoredServer stored : servers) {
+            if (!refresh(stored.server()) && (stored.infoFetchedAt() == null
+                || stored.infoFetchedAt().isBefore(OffsetDateTime.now().minusSeconds(30)))) {
+                stale++;
+            }
         }
+        registeredServers = servers.size();
+        staleStatuses = stale;
+        refreshCompletedAt = System.currentTimeMillis() / 1000;
     }
 
     @Scheduled(
@@ -113,6 +135,7 @@ public class ServerService {
     void pruneServers() {
         int deleted = repository.deleteOlderThan(OffsetDateTime.now().minus(heartbeatTtl));
         if (deleted > 0) {
+            prunedServers.increment(deleted);
             LOG.infof("Pruned %d stale Q3JS server(s)", deleted);
         }
     }
@@ -127,18 +150,22 @@ public class ServerService {
             OffsetDateTime.now()
         );
         if (repository.insertIfMissing(server)) {
-            LOG.infof("Adding static server %s:%d", host, proxyPort);
+            LOG.info("Adding static community server");
         }
     }
 
-    private void refresh(RegisteredServer server) {
-        statusClient.query(server).ifPresent(info -> {
-            try {
-                repository.updateInfo(server, objectMapper.writeValueAsString(info), OffsetDateTime.now());
-            } catch (JsonProcessingException exception) {
-                LOG.errorf(exception, "Unable to serialize status for %s:%d", server.host(), server.proxyPort());
-            }
-        });
+    private boolean refresh(RegisteredServer server) {
+        Optional<ServerInfo> info = statusClient.query(server);
+        if (info.isEmpty()) {
+            return false;
+        }
+        try {
+            repository.updateInfo(server, objectMapper.writeValueAsString(info.get()), OffsetDateTime.now());
+            return true;
+        } catch (JsonProcessingException exception) {
+            LOG.error("Unable to serialize server status");
+            return false;
+        }
     }
 
     private Optional<ServerResponse> response(StoredServer stored) {
@@ -155,12 +182,7 @@ public class ServerService {
                 objectMapper.readValue(stored.infoJson(), ServerInfo.class)
             ));
         } catch (JsonProcessingException exception) {
-            LOG.warnf(
-                exception,
-                "Ignoring invalid stored status for %s:%d",
-                stored.server().host(),
-                stored.server().proxyPort()
-            );
+            LOG.warn("Ignoring invalid stored server status");
             return Optional.empty();
         }
     }
