@@ -36,7 +36,10 @@ internal. Existing health/OpenAPI/Swagger endpoints remain on application port
 
 To deploy the stack through Dokploy, use this repository with Compose path
 `master/observability/compose.yml`, disable automatic deployments, and set a
-random `GRAFANA_ADMIN_PASSWORD` in the Compose environment. Add the HTTPS domain
+random `GRAFANA_ADMIN_PASSWORD` in the Compose environment. Append
+`--force-recreate` to Dokploy's default Compose deployment command so cloned
+configuration files replace existing bind mounts on every redeploy; named
+volumes remain intact. Add the HTTPS domain
 `grafana.q3js.com`, service `grafana`, port `3000`, Let's Encrypt certificate.
 The master defaults in `.env.example` target the production Dokploy service.
 The master deployment watches application sources and build files; monitoring
