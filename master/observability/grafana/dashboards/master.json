@@ -6,7 +6,7 @@
     "production"
   ],
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "refresh": "15s",
   "time": {
@@ -26,18 +26,46 @@
         "x": 0,
         "y": 0,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "probe_success",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "expr": "probe_success{check=~\"Readiness|Public API\"}",
+          "legendFormat": "{{check}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none"
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -48,7 +76,12 @@
           ],
           "fields": "",
           "values": false
-        }
+        },
+        "graphMode": "none",
+        "colorMode": "value",
+        "textMode": "value_and_name",
+        "orientation": "auto",
+        "justifyMode": "auto"
       }
     },
     {
@@ -63,18 +96,46 @@
         "x": 12,
         "y": 0,
         "w": 12,
-        "h": 8
+        "h": 5
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "up",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "expr": "up{job=~\"master|monitoring\"}",
+          "legendFormat": "{{instance}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none"
+          "unit": "none",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -85,7 +146,12 @@
           ],
           "fields": "",
           "values": false
-        }
+        },
+        "graphMode": "none",
+        "colorMode": "value",
+        "textMode": "value_and_name",
+        "orientation": "auto",
+        "justifyMode": "auto"
       }
     },
     {
@@ -98,7 +164,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 8,
+        "y": 5,
         "w": 12,
         "h": 8
       },
@@ -106,7 +172,7 @@
         {
           "refId": "A",
           "expr": "sum(rate(http_server_requests_seconds_count{job=\"master\"}[5m]))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -135,7 +201,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 8,
+        "y": 5,
         "w": 12,
         "h": 8
       },
@@ -143,7 +209,7 @@
         {
           "refId": "A",
           "expr": "(sum(rate(http_server_requests_seconds_count{job=\"master\",status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_requests_seconds_count{job=\"master\"}[5m])), 0.00001)",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -172,7 +238,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 13,
         "w": 12,
         "h": 8
       },
@@ -180,7 +246,7 @@
         {
           "refId": "A",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"master\"}[5m])))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -209,7 +275,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 16,
+        "y": 13,
         "w": 12,
         "h": 8
       },
@@ -217,7 +283,7 @@
         {
           "refId": "A",
           "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"master\"}[5m]))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": "{{uri}}"
         }
       ],
       "fieldConfig": {
@@ -246,7 +312,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 21,
         "w": 12,
         "h": 8
       },
@@ -254,7 +320,7 @@
         {
           "refId": "A",
           "expr": "sum(jvm_memory_used_bytes{job=\"master\",area=\"heap\"}) / sum(jvm_memory_max_bytes{job=\"master\",area=\"heap\"})",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -283,7 +349,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 21,
         "w": 12,
         "h": 8
       },
@@ -291,7 +357,7 @@
         {
           "refId": "A",
           "expr": "sum(rate(jvm_gc_pause_seconds_sum{job=\"master\"}[5m]))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -320,7 +386,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 29,
         "w": 12,
         "h": 8
       },
@@ -328,7 +394,7 @@
         {
           "refId": "A",
           "expr": "agroal_active_count{job=\"master\"} / agroal_max_size{job=\"master\"}",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": "{{datasource}}"
         }
       ],
       "fieldConfig": {
@@ -357,7 +423,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 32,
+        "y": 29,
         "w": 12,
         "h": 8
       },
@@ -365,7 +431,7 @@
         {
           "refId": "A",
           "expr": "agroal_active_count{job=\"master\"}",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": "{{datasource}}"
         }
       ],
       "fieldConfig": {
@@ -394,7 +460,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 37,
         "w": 12,
         "h": 8
       },
@@ -402,7 +468,7 @@
         {
           "refId": "A",
           "expr": "sum by (type) (rate(q3js_events_persisted_total{job=\"master\"}[5m]))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": "{{type}}"
         }
       ],
       "fieldConfig": {
@@ -431,7 +497,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 40,
+        "y": 37,
         "w": 12,
         "h": 8
       },
@@ -439,7 +505,7 @@
         {
           "refId": "A",
           "expr": "rate(q3js_player_connections_persisted_total{job=\"master\"}[5m])",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -468,7 +534,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 48,
+        "y": 45,
         "w": 12,
         "h": 8
       },
@@ -476,7 +542,7 @@
         {
           "refId": "A",
           "expr": "sum by (classification) (rate(q3js_heartbeats_accepted_total{job=\"master\"}[5m]))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": "{{classification}}"
         }
       ],
       "fieldConfig": {
@@ -505,7 +571,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 48,
+        "y": 45,
         "w": 12,
         "h": 8
       },
@@ -513,7 +579,7 @@
         {
           "refId": "A",
           "expr": "q3js_servers_registered{job=\"master\"}",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -542,7 +608,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 56,
+        "y": 53,
         "w": 12,
         "h": 8
       },
@@ -550,7 +616,7 @@
         {
           "refId": "A",
           "expr": "q3js_servers_status_stale{job=\"master\"}",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -579,7 +645,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 56,
+        "y": 53,
         "w": 12,
         "h": 8
       },
@@ -587,7 +653,7 @@
         {
           "refId": "A",
           "expr": "time() - q3js_servers_refresh_completed_timestamp{job=\"master\"}",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -616,7 +682,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 64,
+        "y": 61,
         "w": 12,
         "h": 8
       },
@@ -624,7 +690,7 @@
         {
           "refId": "A",
           "expr": "sum by (outcome) (rate(q3js_server_status_query_seconds_count{job=\"master\"}[5m]))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": "{{outcome}}"
         }
       ],
       "fieldConfig": {
@@ -653,7 +719,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 64,
+        "y": 61,
         "w": 12,
         "h": 8
       },
@@ -661,7 +727,7 @@
         {
           "refId": "A",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(q3js_server_status_query_seconds_bucket{job=\"master\"}[5m])))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -690,7 +756,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 72,
+        "y": 69,
         "w": 12,
         "h": 8
       },
@@ -698,7 +764,7 @@
         {
           "refId": "A",
           "expr": "increase(q3js_servers_pruned_total{job=\"master\"}[1h])",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": ""
         }
       ],
       "fieldConfig": {
@@ -727,7 +793,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 72,
+        "y": 69,
         "w": 12,
         "h": 8
       },
@@ -735,7 +801,7 @@
         {
           "refId": "A",
           "expr": "sum by (__name__) (rate(otelcol_exporter_send_failed_spans_total[5m])) or sum by (__name__) (rate(otelcol_exporter_send_failed_log_records_total[5m])) or sum by (__name__) (rate(otelcol_receiver_refused_spans_total[5m]))",
-          "legendFormat": "{{instance}} {{uri}} {{outcome}} {{type}} {{classification}}"
+          "legendFormat": "{{__name__}}"
         }
       ],
       "fieldConfig": {
@@ -764,7 +830,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 80,
+        "y": 77,
         "w": 24,
         "h": 12
       },

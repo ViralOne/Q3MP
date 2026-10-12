@@ -85,13 +85,13 @@ prometheus.exporter.blackbox "master" {
     name = "master-readiness"
     address = sys.env("MASTER_INTERNAL_URL") + "/q/health/ready"
     module = "http_2xx"
-    labels = {"environment" = "production"}
+    labels = {"environment" = "production", "check" = "Readiness"}
   }
   target {
     name = "master-public"
     address = sys.env("MASTER_PUBLIC_URL")
     module = "http_2xx"
-    labels = {"environment" = "production"}
+    labels = {"environment" = "production", "check" = "Public API"}
   }
 }
 prometheus.scrape "probes" {

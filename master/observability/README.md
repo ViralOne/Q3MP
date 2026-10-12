@@ -39,7 +39,9 @@ To deploy the stack through Dokploy, use this repository with Compose path
 random `GRAFANA_ADMIN_PASSWORD` in the Compose environment. Add the HTTPS domain
 `grafana.q3js.com`, service `grafana`, port `3000`, Let's Encrypt certificate.
 The master defaults in `.env.example` target the production Dokploy service.
-Deploy the stack before enabling master export. Verify fresh CPU/RAM/disk
+The master deployment watches application sources and build files; monitoring
+configuration changes redeploy only this stack. Deploy the stack before enabling
+master export. Verify fresh CPU/RAM/disk
 headroom and DNS before every initial rollout.
 
 For local validation, create `dokploy-network`, use a separate Compose project,
@@ -96,6 +98,10 @@ GRAFANA_URL=https://grafana.q3js.com python3 master/observability/verify.py
 
 It checks every dashboard/rule query, scrape/probes, pool capacity and refresh
 age, policy, and the presence of logs/traces. It never prints the password.
+If Cloudflare blocks command-line API clients, run the check from the internal
+network with `GRAFANA_URL=http://<grafana-container-ip>:3000`, or use an SSH
+tunnel to that container. Keep the public Grafana URL protected.
+
 Application regression tests run with `make master`; if local ports are occupied,
 use `./master/mvnw -f master/pom.xml package -Dquarkus.http.test-port=0
 -Dquarkus.management.test-port=0` on one command line.
