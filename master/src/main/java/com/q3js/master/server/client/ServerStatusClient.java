@@ -4,6 +4,11 @@ import com.q3js.master.server.domain.RegisteredServer;
 import com.q3js.master.server.dto.ServerInfo;
 import com.q3js.master.server.service.ServerStatusParser;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
@@ -31,19 +36,31 @@ public class ServerStatusClient {
     private final HttpClient httpClient;
     private final ServerStatusParser parser;
     private final Duration timeout;
+    private final MeterRegistry metrics;
+    private final Timer successfulQueries;
+    private final Timer failedQueries;
 
     public ServerStatusClient(
         ServerStatusParser parser,
-        @ConfigProperty(name = "q3js.master.server-status-timeout") Duration timeout
+        @ConfigProperty(name = "q3js.master.server-status-timeout") Duration timeout,
+        MeterRegistry metrics
     ) {
         this.parser = parser;
         this.timeout = timeout;
+        this.metrics = metrics;
+        successfulQueries = Timer.builder("q3js.server.status.query").tag("outcome", "success")
+            .publishPercentileHistogram().register(metrics);
+        failedQueries = Timer.builder("q3js.server.status.query").tag("outcome", "failure")
+            .publishPercentileHistogram().register(metrics);
         this.httpClient = HttpClient.newBuilder()
             .connectTimeout(timeout)
             .build();
     }
 
+    @WithSpan("q3js.server.status")
     public Optional<ServerInfo> query(RegisteredServer server) {
+        Timer.Sample sample = Timer.start(metrics);
+        boolean success = false;
         WebSocket webSocket = null;
         try {
             long startedAt = System.nanoTime();
@@ -62,7 +79,9 @@ public class ServerStatusClient {
                 .orTimeout(timeout.toMillis(), TimeUnit.MILLISECONDS)
                 .join();
             int ping = Math.toIntExact(Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
-            return parser.parse(new String(payload, StandardCharsets.UTF_8), server, ping);
+            Optional<ServerInfo> info = parser.parse(new String(payload, StandardCharsets.UTF_8), server, ping);
+            success = info.isPresent();
+            return info;
         } catch (RuntimeException exception) {
             LOG.debugf(
                 exception,
@@ -72,6 +91,11 @@ public class ServerStatusClient {
             );
             return Optional.empty();
         } finally {
+            sample.stop(success ? successfulQueries : failedQueries);
+            Span.current().setAttribute("q3js.outcome", success ? "success" : "failure");
+            if (!success) {
+                Span.current().setStatus(StatusCode.ERROR);
+            }
             if (webSocket != null) {
                 webSocket.abort();
             }

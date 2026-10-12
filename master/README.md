@@ -213,3 +213,9 @@ docker run --rm -p 8080:8080 \
 
 Flyway validates and applies the committed schema migrations when the container
 starts.
+
+## Observability
+
+Metrics use the private management port 9000; health/OpenAPI remain on port 8080.
+Telemetry export is opt-in. See [the observability runbook](observability/README.md)
+for production Grafana, configuration, privacy, alert rules, validation, and rollback.

@@ -25,7 +25,7 @@ class PlayerConnectionServiceTest {
     @Test
     void returnsClampedConnectionPages() {
         var repository = mock(PlayerConnectionRepository.class);
-        var service = new PlayerConnectionService(repository);
+        var service = new PlayerConnectionService(repository, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         var entries = List.of(mock(StoredPlayerAddress.class));
         when(repository.count("Ranger")).thenReturn(51);
         when(repository.find("Ranger", 25, 50)).thenReturn(entries);
@@ -44,7 +44,7 @@ class PlayerConnectionServiceTest {
     @Test
     void sanitizesAndStoresDecodedConnections() {
         var repository = mock(PlayerConnectionRepository.class);
-        var service = new PlayerConnectionService(repository);
+        var service = new PlayerConnectionService(repository, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         var supplied = new LinkedHashMap<String, String>();
         supplied.put("name", "^1Ranger");
         supplied.put("rate", "25000");
@@ -78,7 +78,7 @@ class PlayerConnectionServiceTest {
     @Test
     void rejectsANameThatDoesNotMatchUserinfo() {
         var repository = mock(PlayerConnectionRepository.class);
-        var service = new PlayerConnectionService(repository);
+        var service = new PlayerConnectionService(repository, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         var request = new PlayerConnectionRequest(
             "203.0.113.7",
             "Ranger",

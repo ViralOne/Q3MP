@@ -80,7 +80,7 @@ class StatsServiceTest {
         private int calls;
 
         private RecordingServerService() {
-            super(null, null, null, Duration.ofMinutes(1));
+            super(null, null, null, Duration.ofMinutes(1), new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
         }
 
         @Override

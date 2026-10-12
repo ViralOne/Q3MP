@@ -1,0 +1,8 @@
+apiVersion: 1
+providers:
+  - name: Q3JS
+    folder: Q3JS
+    type: file
+    disableDeletion: true
+    options:
+      path: /var/lib/grafana/dashboards

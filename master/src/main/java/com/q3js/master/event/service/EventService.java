@@ -5,6 +5,7 @@ import com.q3js.master.event.domain.IngestedEvent;
 import com.q3js.master.event.dto.EventRequest;
 import com.q3js.master.event.repository.EventRepository;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.BadRequestException;
 
@@ -13,9 +14,11 @@ import java.util.Locale;
 @ApplicationScoped
 public class EventService {
     private final EventRepository eventRepository;
+    private final MeterRegistry metrics;
 
-    public EventService(EventRepository eventRepository) {
+    public EventService(EventRepository eventRepository, MeterRegistry metrics) {
         this.eventRepository = eventRepository;
+        this.metrics = metrics;
     }
 
     public void ingest(EventRequest request, String sourceIp) {
@@ -26,6 +29,7 @@ public class EventService {
             default -> throw new BadRequestException("Unsupported event type.");
         };
         eventRepository.insert(event, sourceIp);
+        metrics.counter("q3js.events.persisted", "type", type).increment();
     }
 
     private IngestedEvent lifecycleEvent(String type, EventRequest request) {

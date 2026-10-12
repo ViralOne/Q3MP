@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 class EventServiceTest {
     private final RecordingEventRepository repository = new RecordingEventRepository();
-    private final EventService service = new EventService(repository);
+    private final EventService service = new EventService(repository, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     @Test
     void persistsLifecycleEventsInTheExistingSchemaShape() {

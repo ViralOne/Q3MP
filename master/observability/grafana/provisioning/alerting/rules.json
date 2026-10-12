@@ -1,0 +1,679 @@
+{
+  "apiVersion": 1,
+  "groups": [
+    {
+      "orgId": 1,
+      "name": "Master server",
+      "folder": "Q3JS",
+      "interval": "1m",
+      "rules": [
+        {
+          "uid": "master-probe",
+          "title": "Master readiness or public reachability failed",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "probe_success == bool 0",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "2m",
+          "annotations": {
+            "summary": "Master readiness or public reachability failed",
+            "description": "Check the public endpoint, database readiness, and master container.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "master-scrape",
+          "title": "Master metrics unavailable",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "(up{job=\"master\"} == bool 0) or (time() - timestamp(up{job=\"master\"}) > bool 45) or absent(up{job=\"master\"})",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "2m",
+          "annotations": {
+            "summary": "Master metrics unavailable",
+            "description": "Check Alloy, master port 9000, and the internal network.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "monitoring-scrape",
+          "title": "Monitoring component unavailable",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "up{job=\"monitoring\"} == bool 0",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "2m",
+          "annotations": {
+            "summary": "Monitoring component unavailable",
+            "description": "Check the monitoring component container and its logs.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "master-5xx",
+          "title": "Master HTTP error rate above 5%",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "((sum(rate(http_server_requests_seconds_count{job=\"master\",status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_server_requests_seconds_count{job=\"master\"}[5m])), 0.00001) > bool 0.05) * (sum(increase(http_server_requests_seconds_count{job=\"master\"}[5m])) >= bool 20)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Alerting",
+          "for": "0s",
+          "annotations": {
+            "summary": "Master HTTP error rate above 5%",
+            "description": "Inspect ERROR logs and correlated traces for the affected route.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "master-latency",
+          "title": "Master p95 latency above one second",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job=\"master\"}[5m]))) > bool 1",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Alerting",
+          "for": "10m",
+          "annotations": {
+            "summary": "Master p95 latency above one second",
+            "description": "Inspect database queries, status-query latency, and database pool pressure.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "master-heap",
+          "title": "Master JVM heap above 90%",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "sum(jvm_memory_used_bytes{job=\"master\",area=\"heap\"}) / sum(jvm_memory_max_bytes{job=\"master\",area=\"heap\"}) > bool 0.9",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "10m",
+          "annotations": {
+            "summary": "Master JVM heap above 90%",
+            "description": "Inspect GC pauses and allocation pressure before changing heap limits.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "master-pool",
+          "title": "Master database pool above 90%",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "agroal_active_count{job=\"master\"} / agroal_max_size{job=\"master\"} > bool 0.9",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "10m",
+          "annotations": {
+            "summary": "Master database pool above 90%",
+            "description": "Inspect database query latency and connection acquisition.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "master-refresh",
+          "title": "Master server refresh stalled",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "(time() - q3js_servers_refresh_completed_timestamp{job=\"master\"}) > bool 60",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "Alerting",
+          "execErrState": "Alerting",
+          "for": "0s",
+          "annotations": {
+            "summary": "Master server refresh stalled",
+            "description": "Inspect scheduler errors and hanging status queries.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        },
+        {
+          "uid": "master-query-failure",
+          "title": "Master status-query failure rate above 50%",
+          "condition": "C",
+          "data": [
+            {
+              "refId": "A",
+              "relativeTimeRange": {
+                "from": 600,
+                "to": 0
+              },
+              "datasourceUid": "prometheus",
+              "model": {
+                "refId": "A",
+                "expr": "(sum(increase(q3js_server_status_query_seconds_count{job=\"master\",outcome=\"failure\"}[5m])) / clamp_min(sum(increase(q3js_server_status_query_seconds_count{job=\"master\"}[5m])), 1) > bool 0.5) * (sum(increase(q3js_server_status_query_seconds_count{job=\"master\"}[5m])) >= bool 10)",
+                "instant": true,
+                "range": false,
+                "intervalMs": 15000,
+                "maxDataPoints": 43200
+              }
+            },
+            {
+              "refId": "C",
+              "relativeTimeRange": {
+                "from": 0,
+                "to": 0
+              },
+              "datasourceUid": "__expr__",
+              "model": {
+                "refId": "C",
+                "type": "threshold",
+                "expression": "A",
+                "conditions": [
+                  {
+                    "evaluator": {
+                      "type": "gt",
+                      "params": [
+                        0
+                      ]
+                    },
+                    "operator": {
+                      "type": "and"
+                    },
+                    "query": {
+                      "params": [
+                        "C"
+                      ]
+                    },
+                    "reducer": {
+                      "type": "last",
+                      "params": []
+                    },
+                    "type": "query"
+                  }
+                ]
+              }
+            }
+          ],
+          "noDataState": "OK",
+          "execErrState": "Alerting",
+          "for": "0s",
+          "annotations": {
+            "summary": "Master status-query failure rate above 50%",
+            "description": "Inspect game gateway reachability and status-query traces.",
+            "__dashboardUid__": "q3js-master",
+            "__panelId__": "1",
+            "runbook_url": "https://github.com/lklacar/q3js/blob/master/master/observability/README.md"
+          },
+          "labels": {
+            "observability": "master",
+            "environment": "production"
+          },
+          "isPaused": false
+        }
+      ]
+    }
+  ]
+}
