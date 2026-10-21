@@ -63,6 +63,9 @@
 </div>
 <div id="log"></div>
 <div id="playbar">
+  <button id="wheelMinus" title="more sensitive: fewer pixels of wheel scroll per weapon step">wheel −</button>
+  <span id="wheelVal" title="pixels of wheel scroll per weapon step — lower = more sensitive">14px</span>
+  <button id="wheelPlus" title="less sensitive: more pixels of wheel scroll per weapon step">wheel +</button>
   <button id="fsBtn" title="Fullscreen requires a click; press ESC to free the mouse first if the game has it">fullscreen</button>
   <button id="logBtn" title="F1 also toggles">logs (F1)</button>
 </div>
@@ -117,6 +120,48 @@ const playbar = document.getElementById('playbar');
 const fsBtn = document.getElementById('fsBtn');
 const logBtn = document.getElementById('logBtn');
 logBtn.addEventListener('click', () => logBox.classList.toggle('show'));
+
+// --- mouse wheel sensitivity ----------------------------------------------------
+// in_wheelPx = pixels of DOM wheel scroll per MWHEELUP/DOWN tap. Lower = a
+// notch of the mouse wheel changes the weapon sooner (more sensitive). The
+// launcher remembers the choice in localStorage and feeds it to the engine as
+// a +set argument on boot; clicks push `seta in_wheelPx` into the running
+// engine through the exported Cbuf_AddText.
+const wheelDefault = 14;
+let wheelPx = clampPx(parseInt(localStorage.getItem('in_wheelPx'), 10) || wheelDefault);
+let engineModule = null;
+
+function clampPx(v) {
+  return Math.min(120, Math.max(2, isFinite(v) ? v : wheelDefault));
+}
+
+function engineCommand(text) {
+  if (!engineModule) {
+    logLine('engine is still starting; try again in a moment');
+    return false;
+  }
+  try {
+    engineModule.ccall('Cbuf_AddText', null, ['string'], [`${text}\n`]);
+    return true;
+  } catch (e) {
+    logLine(`command failed: ${e && e.message || e}`);
+    return false;
+  }
+}
+
+const wheelVal = document.getElementById('wheelVal');
+
+function setWheelPx(px) {
+  wheelPx = clampPx(px);
+  wheelVal.textContent = `${wheelPx}px`;
+  localStorage.setItem('in_wheelPx', String(wheelPx));
+  engineCommand(`seta in_wheelPx ${wheelPx}`);
+  logLine(`wheel sensitivity: ${wheelPx}px per step (lower = more sensitive)`);
+}
+
+wheelVal.textContent = `${wheelPx}px`;
+document.getElementById('wheelMinus').addEventListener('click', () => setWheelPx(wheelPx - 4));
+document.getElementById('wheelPlus').addEventListener('click', () => setWheelPx(wheelPx + 4));
 
 function fullscreenElementOk() {
   // requestFullscreen lives on the element; fullscreenElement lives on
@@ -581,7 +626,7 @@ async function loadGame(playerName, playerModel) {
   const ioquake3 = (await import('./ioquake3.js')).default;
 
   const canvas = document.getElementById('canvas');
-  ioquake3({
+  engineModule = await ioquake3({
     canvas,
     arguments: [
       '+set', 'net_enabled', '1',
@@ -589,6 +634,7 @@ async function loadGame(playerName, playerModel) {
       '+set', 'com_basegame', gameId,
       '+set', 'name', playerName,
       '+set', 'model', playerModel,
+      '+set', 'in_wheelPx', String(wheelPx),
       '+connect', connectAddress,
     ],
     locateFile: (file) => new URL(file, location.href).href,

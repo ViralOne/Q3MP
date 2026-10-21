@@ -29,7 +29,10 @@ list(APPEND CLIENT_LINK_OPTIONS
     -sFORCE_FILESYSTEM=1
     -sWASMFS=0
     -sENVIRONMENT=web
-    -sEXPORTED_RUNTIME_METHODS=FS,addRunDependency,removeRunDependency,callMain
+    # ccall + exports let the launcher shell push client console commands
+    # (e.g. in_wheelPx) into the engine after boot.
+    -sEXPORTED_RUNTIME_METHODS=FS,addRunDependency,removeRunDependency,callMain,ccall
+    -sEXPORTED_FUNCTIONS=_main,_Cbuf_AddText,_Cvar_VariableValue
     -sEXIT_RUNTIME=1
     -sEXPORT_ES6
     -sEXPORT_NAME=${CLIENT_NAME}
