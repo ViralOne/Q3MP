@@ -18,6 +18,7 @@
 //   RCON_PASSWORD   shared secret for the /admin/api endpoints (empty = admin API off)
 //   GAME_DATA_DIR   served game dir: map list, levelshots, admin pk3 uploads (default /data/baseq3)
 //   MAX_UPLOAD_MB   largest map pk3 the admin panel may upload (default 300)
+//   STATS_LOG       games.log the /stats leaderboard is built from (see stats.mjs)
 //   Q3JS_MASTER_URL master registry serving GET /api/servers for the launcher
 //                   server list relay (default https://master.q3js.com);
 //                   also the heartbeat target used by master-heartbeat.mjs
@@ -31,6 +32,7 @@ import { basename } from "node:path";
 import { WebSocketServer } from "ws";
 
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
+import { startStats, statsSnapshot } from "./stats.mjs";
 
 const env = (name, fallback) => process.env[name] || fallback;
 const num = (name, fallback) => {
@@ -423,6 +425,11 @@ async function handleAdmin(request, response) {
     }
     return true;
   }
+  // Public leaderboard / stats, rebuilt from the server's games.log
+  if (url.pathname === "/stats" && request.method === "GET") {
+    respond(response, 200, statsSnapshot());
+    return true;
+  }
   // Public map gallery: every map in the server paks (with or without a
   // screenshot) and what is being played right now.
   if (url.pathname === "/maps" && request.method === "GET") {
@@ -703,6 +710,7 @@ httpServer.listen(options.gatewayPort, options.gatewayHost, () => {
       ` -> udp://${options.targetHost}:${options.targetPort}`,
   );
   startMasterHeartbeat((line) => console.log(`[heartbeat] ${line}`));
+  startStats((line) => console.log(`[stats] ${line}`));
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

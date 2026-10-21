@@ -156,6 +156,18 @@ name is the `maps/<name>.bsp` inside the pk3, not the pk3's file name
 (`unzip -Z1 file.pk3 | grep bsp`). Maps without a `.aas` file have no bot
 navigation, so bots stand still there.
 
+## Leaderboard
+
+`/stats.html` (linked from the launcher and admin panel) shows frags,
+deaths, K/D, suicides, matches, wins (FFA/duel top score), favourite weapon
+and victim per player, frags by weapon, most played maps and recent match
+podiums. The gateway rebuilds it from the game server's own `games.log`
+(`STATS_LOG`, on the server-state volume), so there is no database and
+history survives restarts; `g_logsync 1` in the server defaults makes new
+frags show up within seconds. Players are keyed by name (color codes
+stripped); bots are hidden unless *include bots* is ticked. To reset the
+stats, delete `games.log` from the server-state volume.
+
 ## Player-facing URLs
 
 | URL | Description |

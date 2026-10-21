@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quake III Arena — Leaderboard</title>
+<style>
+  html, body { margin:0; padding:0; background:#000; color:#ddd;
+    font-family:"SF Mono", Menlo, Consolas, monospace; }
+  main { max-width:980px; margin:0 auto; padding:24px 20px 48px; }
+  h1 { font-size:22px; font-weight:700; letter-spacing:2px; color:#d94a36; text-transform:uppercase; margin:0 0 4px; }
+  h2 { font-size:13px; color:#d94a36; margin:0 0 12px; text-transform:uppercase; letter-spacing:1px; font-weight:700; }
+  a { color:#a9a; }
+  .sub { color:#8a8a8a; font-size:12px; margin-bottom:20px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+  .sub label { display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .sub input { accent-color:#d94a36; }
+  .card { background:#111; border:1px solid #333; border-radius:4px; padding:14px 16px; margin-bottom:16px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:16px; }
+  .tile { background:#111; border:1px solid #333; border-radius:4px; padding:12px 14px; }
+  .tile .v { font-size:26px; color:#eee; font-weight:700; }
+  .tile .k { font-size:11px; color:#8a8a8a; text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; }
+  .cols .card { margin-bottom:0; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th, td { text-align:right; padding:6px 8px; border-bottom:1px solid #1f1f1f; white-space:nowrap; }
+  th:nth-child(2), td:nth-child(2), th:nth-child(n+9), td:nth-child(n+9) { text-align:left; }
+  th { color:#8a8a8a; font-weight:400; text-transform:uppercase; font-size:10px; letter-spacing:1px; }
+  tbody tr:hover td { background:#181818; }
+  td.rank { color:#8a8a8a; }
+  tr.top td.rank { color:#d94a36; font-weight:700; }
+  .tag { font-size:10px; color:#8a8a8a; border:1px solid #444; border-radius:3px; padding:0 4px; margin-left:6px; }
+  .scroll { overflow-x:auto; }
+  /* single-series bar lists: one brand hue, value labels in text ink */
+  .bars { display:flex; flex-direction:column; gap:6px; }
+  .bar { display:grid; grid-template-columns:130px 1fr 44px; gap:8px; align-items:center; font-size:12px;
+    padding:2px 0; border-radius:3px; }
+  .bar:hover { background:#181818; }
+  .bar .name { color:#ccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar .track { height:10px; }
+  .bar .fill { height:100%; background:#d94a36; border-radius:0 4px 4px 0; min-width:2px; }
+  .bar .val { color:#ddd; text-align:right; }
+  .match { display:grid; grid-template-columns:1fr auto; gap:4px 12px; padding:8px 0; border-bottom:1px solid #1f1f1f; font-size:12px; }
+  .match:last-child { border-bottom:0; }
+  .match .m { color:#eee; }
+  .match .meta { color:#8a8a8a; text-align:right; }
+  .match .podium { grid-column:1 / -1; color:#bbb; }
+  .match .podium b { color:#eee; font-weight:400; }
+  .empty { color:#8a8a8a; font-size:12px; padding:6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Leaderboard</h1>
+  <div class="sub">
+    <a href="index.html">← back to the game</a>
+    <label><input type="checkbox" id="bots"> include bots</label>
+    <span id="updated">loading…</span>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="card">
+    <h2>Players</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>#</th><th>player</th><th>frags</th><th>deaths</th><th>k/d</th><th>suicides</th>
+          <th>matches</th><th>wins</th><th>favourite weapon</th><th>favourite victim</th>
+        </tr></thead>
+        <tbody id="players"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>Frags by weapon</h2>
+      <div class="bars" id="weapons"></div>
+    </div>
+    <div class="card">
+      <h2>Most played maps</h2>
+      <div class="bars" id="maps"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Recent matches</h2>
+    <div id="matches"></div>
+  </div>
+</main>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const botsKey = 'q3.statsBots';
+$('bots').checked = localStorage.getItem(botsKey) === '1';
+const GAMETYPES = { 0: 'FFA', 1: 'Duel', 3: 'CTF', 4: 'TDM' };
+let data = null;
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function tile(value, label) {
+  return `<div class="tile"><div class="v">${esc(value)}</div><div class="k">${esc(label)}</div></div>`;
+}
+
+// one hue, longest bar = 100%; the value is printed beside every bar (short
+// lists) and repeated in the hover title
+function bars(el, rows, unit) {
+  if (!rows.length) { el.innerHTML = '<div class="empty">nothing recorded yet</div>'; return; }
+  const max = Math.max(...rows.map((r) => r.value)) || 1;
+  el.innerHTML = rows.map((r) =>
+    `<div class="bar" title="${esc(r.label)}: ${r.value} ${unit}">` +
+    `<span class="name">${esc(r.label)}</span>` +
+    `<span class="track"><span class="fill" style="display:block;width:${(r.value / max * 100).toFixed(1)}%"></span></span>` +
+    `<span class="val">${r.value}</span></div>`).join('');
+}
+
+function render() {
+  if (!data) return;
+  const withBots = $('bots').checked;
+  const players = data.players.filter((p) => withBots || !p.bot);
+  const humans = data.players.filter((p) => !p.bot).length;
+
+  $('tiles').innerHTML =
+    tile(data.totalKills, 'frags recorded') +
+    tile(humans, 'players') +
+    tile(data.maps.reduce((n, m) => n + m.matches, 0), 'matches started') +
+    tile(data.weapons[0] ? data.weapons[0].name : '—', 'deadliest weapon');
+
+  $('players').innerHTML = players.length
+    ? players.map((p, i) =>
+      `<tr class="${i < 3 ? 'top' : ''}"><td class="rank">${i + 1}</td>` +
+      `<td>${esc(p.name)}${p.bot ? '<span class="tag">bot</span>' : ''}</td>` +
+      `<td>${p.kills}</td><td>${p.deaths}</td><td>${p.kd.toFixed(2)}</td><td>${p.suicides}</td>` +
+      `<td>${p.matches}</td><td>${p.wins}</td>` +
+      `<td>${esc(p.favoriteWeapon || '—')}</td>` +
+      `<td>${p.favoriteVictim ? `${esc(p.favoriteVictim.name)} (${p.favoriteVictim.kills})` : '—'}</td></tr>`).join('')
+    : `<tr><td colspan="10" class="empty" style="text-align:left">no ${withBots ? '' : 'human '}players recorded yet — play a match</td></tr>`;
+
+  bars($('weapons'), data.weapons.map((w) => ({ label: w.name, value: w.kills })), 'frags');
+  bars($('maps'), data.maps.slice(0, 10).map((m) => ({ label: m.name, value: m.matches })), 'matches');
+
+  $('matches').innerHTML = data.recentMatches.length
+    ? data.recentMatches.map((m) =>
+      `<div class="match"><span class="m">${esc(m.map)} · ${GAMETYPES[m.gametype] ?? `type ${m.gametype}`}</span>` +
+      `<span class="meta">${esc(m.exit || '')} · ${m.kills} frags` +
+      `${m.endedAt ? ' · ' + new Date(m.endedAt).toLocaleString() : ''}</span>` +
+      `<span class="podium">${m.scores.slice(0, 3).map((s, i) => `${i + 1}. <b>${esc(s.name)}</b> ${s.score}`).join(' &nbsp; ')}</span></div>`).join('')
+    : '<div class="empty">no finished matches yet</div>';
+}
+
+async function load() {
+  try {
+    const r = await fetch('/stats', { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    data = await r.json();
+    $('updated').textContent = data.enabled
+      ? `live · updates every 10 s`
+      : 'stats are off on this server (STATS_LOG empty)';
+    render();
+  } catch (e) {
+    $('updated').textContent = `stats unavailable (${e && e.message || e})`;
+  }
+}
+
+$('bots').addEventListener('change', () => {
+  localStorage.setItem(botsKey, $('bots').checked ? '1' : '0');
+  render();
+});
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

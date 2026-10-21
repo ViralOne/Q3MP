@@ -5,7 +5,8 @@
 set -uo pipefail
 
 GAME_DATA_DIR="/data/${FS_BASEGAME:-baseq3}"
-export GAME_DATA_DIR
+STATS_LOG="/state/${FS_BASEGAME:-baseq3}/games.log"
+export GAME_DATA_DIR STATS_LOG
 
 pids=()
 shutdown() {

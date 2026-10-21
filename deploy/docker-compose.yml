@@ -32,6 +32,7 @@ services:
     environment:
       TARGET_HOST: q3ded
       TARGET_PORT: "27960"
+      STATS_LOG: "/state/baseq3/games.log"
       MAX_CONNECTIONS: "64"
       # Validated against incoming /admin/api requests; must match the server.
       RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD (admin panel / rcon password)}"
@@ -45,6 +46,8 @@ services:
       # Read-only access to the paks, to extract the list of loadable maps
       # for /admin.html (names only, straight from the zip directories).
       - ./quake3-data:/data:ro
+      # the server's games.log, for the /stats leaderboard
+      - server-state:/state:ro
     depends_on:
       - q3ded
     restart: unless-stopped
