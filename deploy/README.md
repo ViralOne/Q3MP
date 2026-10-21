@@ -181,6 +181,21 @@ applies on map load — the presets reload the map for you):
 In both, every weapon, ammo, armor, health and powerup pickup is removed from
 the map (CTF flags stay) and dead players drop nothing. Bots play both modes.
 
+## Bots
+
+Bots only move on maps with bot navigation (`maps/<name>.aas`). The
+all-in-one image bundles **bspc** (the GPL bot-navigation compiler, pinned
+from github.com/TTimo/bspc) and the gateway runs it for maps that lack it:
+automatically for every map in an uploaded pk3, and for the rest with
+**Generate missing** in the admin *Bots* card. The result is written as
+`zz-aas-<map>.pk3` next to the map (a few seconds to minutes per map) and
+loads on the next server restart; deleting the map pk3 removes it too. Maps
+still without navigation are marked *no bots* in both galleries.
+
+**Auto-fill** keeps the server at N players with bots (`bot_minplayers`;
+bots leave as humans join) at the difficulty picked next to it (`g_spSkill`,
+1 easy … 5 nightmare).
+
 ## Leaderboard
 
 `/stats.html` (linked from the launcher and admin panel) shows frags,

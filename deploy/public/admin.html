@@ -56,6 +56,7 @@
   .mapTile:hover { border-color:#777; }
   .mapTile.sel { border-color:#d94a36; outline:1px solid #d94a36; }
   .mapTile.now span::after { content:' \00B7  now'; color:#d94a36; }
+  .mapTile .nobots { display:block; font-size:10px; color:#d9a036; padding:0 6px 4px; }
   .mapTile img, .mapTile .noshot { width:100%; aspect-ratio:4/3; object-fit:cover; display:block;
     background:#181818; }
   .mapTile .noshot { display:flex; align-items:center; justify-content:center; color:#777; font-size:11px; }
@@ -179,10 +180,21 @@
   </div>
   <div class="row" style="margin-top:10px">
     <input id="botFill" size="3" placeholder="0" title="number of players the server fills with bots (0 = off)">
-    <button class="ghost" data-cmd="bot_minplayers %botFill%">Auto-fill (bot_minplayers)</button>
+    <select id="botFillSkill" title="difficulty of the auto-fill bots (g_spSkill)">
+      <option value="1">1 · easy</option>
+      <option value="2">2 · below avg</option>
+      <option value="3" selected>3 · average</option>
+      <option value="4">4 · advanced</option>
+      <option value="5">5 · nightmare</option>
+    </select>
+    <button class="ghost" id="botFillBtn">Auto-fill (bot_minplayers)</button>
     <button class="ghost" data-cmd="kickbots">Kick all bots</button>
   </div>
-  <span class="kv">remove matches the bot by name (<span style="font-family:monospace">kick sarge</span>) · auto-fill 0 = off</span>
+  <span class="kv">remove matches the bot by name (<span style="font-family:monospace">kick sarge</span>) · auto-fill 0 = off · auto-fill bots leave as humans join</span>
+  <div class="row" style="margin-top:10px">
+    <span class="kv" id="aasState">checking bot navigation…</span>
+    <button class="ghost" id="aasGen" hidden>Generate missing</button>
+  </div>
 </div>
 
 <div class="card">
@@ -348,6 +360,7 @@ function mapCategory(m) {
 
 let allMaps = [];
 let mapShots = new Set();   // maps that have a levelshot (gateway /maps)
+let mapNoBots = new Set();  // maps without bot navigation (.aas)
 let currentMap = '';
 
 function mapTile(m) {
@@ -371,6 +384,12 @@ function mapTile(m) {
   const label = document.createElement('span');
   label.textContent = m;
   tile.append(label);
+  if (mapNoBots.has(m)) {
+    const warn = document.createElement('span');
+    warn.className = 'nobots';
+    warn.textContent = 'no bot navigation';
+    tile.append(warn);
+  }
   tile.addEventListener('click', () => {
     $('map').value = m;
     $('map').dispatchEvent(new Event('change'));
@@ -384,6 +403,7 @@ async function loadShots() {
     if (!response.ok) return;
     const body = await response.json();
     mapShots = new Set((body.maps || []).filter((m) => m.shot).map((m) => m.name));
+    mapNoBots = new Set((body.maps || []).filter((m) => m.bots === false).map((m) => m.name));
     currentMap = (body.current && body.current.mapname) || '';
   } catch {
     // gallery thumbnails are optional; the picker works without them
@@ -492,6 +512,52 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// --- bots: auto-fill difficulty and bot navigation (.aas) ---------------------------
+
+$('botFillBtn').addEventListener('click', async () => {
+  const n = $('botFill').value.trim() || '0';
+  if (!/^\d+$/.test(n)) { $('st').textContent = 'auto-fill needs a number of players'; return; }
+  // auto-fill bots take their skill from g_spSkill when they join
+  if (await rcon(`g_spSkill ${$('botFillSkill').value}`) !== null) await rcon(`bot_minplayers ${n}`);
+  refresh();
+});
+
+let aasTimer = null;
+async function loadAas() {
+  try {
+    const response = await fetch('/admin/api/bots');
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { $('aasState').textContent = body.error || `HTTP ${response.status}`; return; }
+    const active = body.jobs.filter((j) => j.state === 'queued' || j.state === 'running');
+    const recent = body.jobs.filter((j) => j.state === 'done' || j.state === 'failed').slice(-3);
+    let text = body.missing.length
+      ? `${body.missing.length} map(s) without bot navigation (bots stand still): ${body.missing.join(', ')}`
+      : 'every map has bot navigation';
+    if (active.length) text += ` · generating: ${active.map((j) => `${j.map} (${j.state})`).join(', ')}`;
+    if (recent.length) text += ` · last: ${recent.map((j) => `${j.map} ${j.state}${j.error ? ` — ${j.error}` : ''}`).join(', ')} — restart the server to load`;
+    if (body.missing.length && !body.bspc) text += ' · this image has no bspc (use the all-in-one image to generate it)';
+    $('aasState').textContent = text;
+    $('aasGen').hidden = !(body.missing.length && body.bspc && body.writable) || active.length > 0;
+    clearTimeout(aasTimer);
+    if (active.length) aasTimer = setTimeout(loadAas, 3000);
+    else if (recent.length) loadMapList();
+  } catch (e) {
+    $('aasState').textContent = 'bot navigation status failed: ' + (e && e.message || e);
+  }
+}
+
+$('aasGen').addEventListener('click', async () => {
+  if (!$('pw').value) { $('st').textContent = 'unlock with the password first'; return; }
+  const response = await fetch('/admin/api/bots/aas', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: $('pw').value }),
+  });
+  const body = await response.json().catch(() => ({}));
+  out(`> generate bot navigation\n${response.ok ? `queued: ${body.queued.join(', ') || '(nothing new)'}` : 'ERROR: ' + (body.error || response.status)}`);
+  loadAas();
+});
 
 // --- game-mode presets (gateway /admin/api/presets) -----------------------------
 
@@ -649,7 +715,8 @@ function uploadPak(file) {
       let body = {};
       try { body = JSON.parse(xhr.responseText); } catch {}
       resolve(xhr.status === 201
-        ? `${file.name}: uploaded (${(body.maps || []).join(', ')})`
+        ? `${file.name}: uploaded (${(body.maps || []).join(', ')})` +
+          (body.aasQueued && body.aasQueued.length ? ` · generating bot navigation for ${body.aasQueued.join(', ')}` : '')
         : `${file.name}: ${body.error || `HTTP ${xhr.status}`}`);
     };
     xhr.onerror = () => resolve(`${file.name}: upload failed (network)`);
@@ -669,6 +736,7 @@ $('pakUpload').addEventListener('click', async () => {
   await loadPaks();
   $('pakState').textContent = results.join(' · ') + ' — restart the server to load them';
   loadMapList();
+  loadAas();
 });
 
 async function deletePak(name) {
@@ -696,6 +764,7 @@ refresh();
 loadMapList();
 loadPaks();
 loadPresets();
+loadAas();
 </script>
 </body>
 </html>

@@ -39,12 +39,25 @@ RUN mkdir -p /stage/vm \
   && zip -q -9 -X /zz-scorekeep.pk3 vm/qagame.qvm \
   && zip -q -9 -X /zz-cgame.pk3 vm/cgame.qvm
 
+# --- bspc: bot navigation (.aas) compiler for maps that ship without it --------
+# GPL v2 (id Software / TTimo), pinned. Its platform header predates aarch64,
+# so that architecture is added for local builds on ARM machines.
+FROM buildpack-deps:bookworm-scm AS bspc
+ARG BSPC_COMMIT=10d23c5ebd042ddc5d03e17de0f560f5076649dc
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+  && rm -rf /var/lib/apt/lists/*
+RUN git clone https://github.com/TTimo/bspc.git /bspc \
+  && cd /bspc && git checkout --quiet "$BSPC_COMMIT" \
+  && sed -i 's|^//catch missing defines in above blocks|#if !defined( ARCH_STRING ) \&\& defined( __aarch64__ )\n#define ARCH_STRING "aarch64"\n#define Q3_LITTLE_ENDIAN\n#endif\n\n//catch missing defines in above blocks|' deps/qcommon/q_platform.h \
+  && make -j"$(nproc)" >/dev/null \
+  && ./bspc >/dev/null 2>&1; test -x /bspc/bspc
+
 # --- gateway dependencies -----------------------------------------------------
 FROM node:24-bookworm-slim AS gateway
 WORKDIR /app
 COPY deploy/gateway/package.json deploy/gateway/package-lock.json ./
 RUN npm ci --omit=dev --silent
-COPY deploy/gateway/gateway.mjs deploy/gateway/master-heartbeat.mjs deploy/gateway/stats.mjs deploy/gateway/presets.mjs ./
+COPY deploy/gateway/gateway.mjs deploy/gateway/master-heartbeat.mjs deploy/gateway/stats.mjs deploy/gateway/presets.mjs deploy/gateway/aas.mjs ./
 
 # --- caddy binary -------------------------------------------------------------
 FROM caddy:2 AS caddy
@@ -63,6 +76,7 @@ COPY deploy/server/defaults/baseq3.cfg deploy/server/defaults/demoq3.cfg /defaul
 
 COPY --from=gateway /app /opt/gateway
 
+COPY --from=bspc /bspc/bspc /usr/local/bin/bspc
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 # Same Caddyfile as the split stack; the gateway is a sibling process here,
 # not the "gateway" compose service.

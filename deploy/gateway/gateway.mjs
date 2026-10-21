@@ -20,6 +20,7 @@
 //   MAX_UPLOAD_MB   largest map pk3 the admin panel may upload (default 300)
 //   STATS_LOG       games.log the /stats leaderboard is built from (see stats.mjs)
 //   PRESETS_FILE    where admin-chosen game-mode map lists are saved (see presets.mjs)
+//   BSPC_PATH       bot navigation compiler for maps without .aas (see aas.mjs)
 //   Q3JS_MASTER_URL master registry serving GET /api/servers for the launcher
 //                   server list relay (default https://master.q3js.com);
 //                   also the heartbeat target used by master-heartbeat.mjs
@@ -35,6 +36,7 @@ import { WebSocketServer } from "ws";
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
 import { startStats, statsSnapshot } from "./stats.mjs";
 import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax } from "./presets.mjs";
+import { hasBspc, queueAas, aasJobs, aasPakName } from "./aas.mjs";
 
 const env = (name, fallback) => process.env[name] || fallback;
 const num = (name, fallback) => {
@@ -186,7 +188,7 @@ function authorized(body) {
 // directory, so we never decompress anything — we just read the directory
 // records at the end of each file (cheap even for the 450 MB pak0).
 
-let mapsCache = { at: 0, maps: [], shots: new Map(), warning: "", };
+let mapsCache = { at: 0, maps: [], shots: new Map(), bsps: new Map(), aas: new Set(), warning: "", };
 
 // Every maps/<name>.bsp, plus the levelshots/<name>.jpg|tga screenshot for
 // the gallery. pk3s are scanned in name order and later ones win, the same
@@ -195,6 +197,8 @@ function listAvailableMaps() {
   if (Date.now() - mapsCache.at < 60_000) return mapsCache;
   const maps = new Set();
   const shots = new Map();
+  const bsps = new Map();       // map -> {path, entry} of its .bsp (bot navigation source)
+  const aas = new Set();        // maps that have bot navigation
   let warning = "";
   try {
     const files = readdirSync(options.mapsDir)
@@ -207,7 +211,12 @@ function listAvailableMaps() {
         for (const entry of zipEntries(path)) {
           const name = entry.name.toLowerCase();
           if (name.endsWith(".bsp") && name.startsWith("maps/")) {
-            maps.add(name.slice("maps/".length, -".bsp".length));
+            const map = name.slice("maps/".length, -".bsp".length);
+            maps.add(map);
+            bsps.set(map, { path, entry });
+          }
+          if (name.endsWith(".aas") && name.startsWith("maps/")) {
+            aas.add(name.slice("maps/".length, -".aas".length));
           }
           const shot = /^levelshots\/([^/]+)\.(jpg|tga)$/.exec(name);
           if (shot) shots.set(shot[1], { path, entry, type: shot[2] });
@@ -219,7 +228,7 @@ function listAvailableMaps() {
   } catch (e) {
     warning = `cannot list ${options.mapsDir}: ${String(e && e.message || e)}`;
   }
-  mapsCache = { at: Date.now(), maps: [...maps].sort(), shots, warning };
+  mapsCache = { at: Date.now(), maps: [...maps].sort(), shots, bsps, aas, warning };
   return mapsCache;
 }
 
@@ -413,6 +422,22 @@ function receivePak(request, name) {
   });
 }
 
+// Queue bot navigation for `names` (default: every map without it) when the
+// gateway can run bspc and write the data dir.
+function queueMissingAas(names) {
+  if (!hasBspc() || !dataWritable()) return [];
+  const { bsps, aas } = listAvailableMaps();
+  const wanted = (names ?? [...bsps.keys()]).filter((m) => bsps.has(m) && !aas.has(m));
+  return queueAas(
+    wanted.map((name) => {
+      const { path, entry } = bsps.get(name);
+      return { name, readBsp: () => readZipEntry(path, entry, 512 << 20) };
+    }),
+    options.mapsDir,
+    () => { mapsCache.at = 0; },
+  );
+}
+
 const readBody = (request) =>
   new Promise((resolve) => {
     const chunks = [];
@@ -468,10 +493,11 @@ async function handleAdmin(request, response) {
   // screenshot) and what is being played right now.
   if (url.pathname === "/maps" && request.method === "GET") {
     const { maps, shots } = listAvailableMaps();
+    const aasHas = (name) => listAvailableMaps().aas.has(name);
     const status = await serverStatus().catch(() => null);
     const info = status?.info ?? {};
     respond(response, 200, {
-      maps: maps.map((name) => ({ name, shot: shots.has(name) })),
+      maps: maps.map((name) => ({ name, shot: shots.has(name), bots: aasHas(name) })),
       current: status ? {
         mapname: String(info.mapname ?? "").toLowerCase(),
         gametype: Number(info.g_gametype ?? 0),
@@ -576,7 +602,9 @@ async function handleAdmin(request, response) {
         try {
           const saved = await receivePak(request, name);
           mapsCache.at = 0;
-          respond(response, 201, { ...saved, note: "restart the server to load it" });
+          // maps without bot navigation get it generated in the background
+          const aasQueued = queueMissingAas(saved.maps);
+          respond(response, 201, { ...saved, aasQueued, note: "restart the server to load it" });
         } catch (error) {
           respond(response, error.status || 500, { error: String(error.message || error) });
         }
@@ -584,12 +612,43 @@ async function handleAdmin(request, response) {
       }
       if (request.method === "DELETE") {
         if (!exists) return respond(response, 404, { error: `${name} not found` }), true;
+        let removedMaps = [];
+        try {
+          removedMaps = zipEntries(target).map((e) => e.name.toLowerCase())
+            .filter((n) => n.startsWith("maps/") && n.endsWith(".bsp")).map((n) => n.slice(5, -4));
+        } catch { /* unreadable pk3: nothing to clean up */ }
         unlinkSync(target);
+        mapsCache.at = 0;
+        // generated bot navigation goes with its map (unless another pk3 still has it)
+        const stillThere = listAvailableMaps().bsps;
+        for (const map of removedMaps) {
+          if (stillThere.has(map)) continue;
+          try { unlinkSync(`${options.mapsDir}/${aasPakName(map)}`); } catch { /* none generated */ }
+        }
         mapsCache.at = 0;
         respond(response, 200, { deleted: name, note: "restart the server to unload it" });
         return true;
       }
       return respond(response, 405, { error: "method not allowed" }), true;
+    }
+    if (url.pathname === "/admin/api/bots" && request.method === "GET") {
+      const { bsps, aas } = listAvailableMaps();
+      respond(response, 200, {
+        bspc: hasBspc(),
+        writable: dataWritable(),
+        missing: [...bsps.keys()].filter((m) => !aas.has(m)).sort(),
+        jobs: aasJobs(),
+      });
+      return true;
+    }
+    if (url.pathname === "/admin/api/bots/aas" && request.method === "POST") {
+      const body = await readBody(request);
+      if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
+      if (!hasBspc()) return respond(response, 409, { error: "bspc is not available in this image (all-in-one image only)" }), true;
+      if (!dataWritable()) return respond(response, 409, { error: `${options.mapsDir} is read-only for the gateway` }), true;
+      const names = Array.isArray(body.maps) && body.maps.length ? body.maps.map(String) : undefined;
+      respond(response, 202, { queued: queueMissingAas(names), jobs: aasJobs() });
+      return true;
     }
     if (url.pathname === "/admin/api/presets" && request.method === "GET") {
       const { maps } = listAvailableMaps();

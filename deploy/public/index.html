@@ -43,6 +43,7 @@
   .mapCard span { display:block; font-size:12px; color:#ccc; padding:5px 7px; white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; }
   .mapCard.now { border-color:#d94a36; }
+  .mapCard .nobots { font-size:10px; color:#d9a036; padding:0 7px 5px; }
   .mapCard.now span::before { content:'\25B6  '; color:#d94a36; }
   #bar { width:min(420px, 70vw); height:8px; background:#222; border:1px solid #333; display:none; }
   #bar i { display:block; height:100%; width:0%; background:#d94a36; transition:width .15s; }
@@ -731,6 +732,13 @@ function mapCard(m, isNow) {
   const label = document.createElement('span');
   label.textContent = m.name;
   card.append(label);
+  if (m.bots === false) {
+    const warn = document.createElement('span');
+    warn.className = 'nobots';
+    warn.textContent = 'no bots';
+    card.title += ' — bots cannot move on this map';
+    card.append(warn);
+  }
   return card;
 }
 
