@@ -1590,6 +1590,10 @@ void CL_RequestAuthorization( void ) {
 	int		i, j, l;
 	cvar_t	*fs;
 
+	// Web fork: id's authorize server is long dead and this also leaks the
+	// stored cl_cdkey into UDP traffic outside the game link; skip it.
+	return;
+
 	if ( !cls.authorizeServer.port ) {
 		Com_Printf( "Resolving %s\n", AUTHORIZE_SERVER_NAME );
 		if ( !NET_StringToAdr( AUTHORIZE_SERVER_NAME, &cls.authorizeServer, NA_IP ) ) {
@@ -4701,6 +4705,12 @@ qboolean CL_CDKeyValidate( const char *key, const char *checksum ) {
 #ifdef STANDALONE
 	return qtrue;
 #else
+	// Web fork: the retail UI VM calls this at the main menu and pops the
+	// CD key screen when it fails. There is no id CD key here (and id's
+	// authorize server is long dead), so always report a valid key instead
+	// of blocking the launcher on the CD key dialog.
+	return qtrue;
+#if 0
 	char	ch;
 	byte	sum;
 	char	chs[3];
@@ -4757,5 +4767,6 @@ qboolean CL_CDKeyValidate( const char *key, const char *checksum ) {
 	}
 
 	return qfalse;
+#endif
 #endif
 }

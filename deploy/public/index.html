@@ -40,6 +40,13 @@
   #playbar button { background:rgba(20,20,20,.85); border:1px solid #444; color:#bbb;
     font:inherit; font-size:11px; padding:5px 10px; border-radius:3px; cursor:pointer; }
   #playbar button:hover { border-color:#d94a36; color:#fff; }
+  #joinfail { position:fixed; top:16px; left:50%; transform:translateX(-50%);
+    display:flex; gap:14px; align-items:center; z-index:6; background:#141414ee;
+    border:1px solid #d94a36; color:#eee; font:inherit; font-size:12px;
+    padding:10px 16px; border-radius:3px; }
+  #joinfail button { background:none; border:1px solid #666; color:#aaa;
+    font:inherit; font-size:11px; padding:4px 10px; border-radius:3px; cursor:pointer; }
+  #joinfail button:hover { border-color:#d94a36; color:#fff; }
   #error { color:#d94a36; font-size:12px; white-space:pre-wrap; max-width:80vw; text-align:center; }
 </style>
 </head>
@@ -67,6 +74,10 @@
   <div id="error"></div>
 </div>
 <div id="log"></div>
+<div id="joinfail" style="display:none">
+  <span>cannot join — the server needs mod/map pk3s this site does not host</span>
+  <button onclick="location.reload()">back</button>
+</div>
 <div id="playbar">
   <button id="wheelMinus" title="more sensitive: fewer pixels of wheel scroll per weapon step">wheel −</button>
   <span id="wheelVal" title="pixels of wheel scroll per weapon step — lower = more sensitive">14px</span>
@@ -103,7 +114,18 @@ const playBtn = document.getElementById('playBtn');
 
 // ---------------------------------------------------------------- console log
 const logLines = [];
+let joinFailNoted = false;
 function logLine(line) {
+  // A join whose map/mod files we do not have surfaces as the engine's
+  // "Invalid game folder" rollback — surface an actionable banner over the
+  // game menu instead of a dead-looking screen.
+  if (!joinFailNoted && /Invalid game folder|not on the pure list/.test(line)) {
+    joinFailNoted = true;
+    const banner = document.getElementById('joinfail');
+    if (banner && document.getElementById('login').style.display === 'none') {
+      banner.style.display = 'flex';
+    }
+  }
   logLines.push(line);
   if (logLines.length > 400) logLines.splice(0, logLines.length - 400);
   logBox.textContent = logLines.join('\n');
@@ -427,6 +449,9 @@ const directServer = Boolean(params.get('server') || params.get('connect'));
 
 const gametypeName = (n) => ({ 0: 'FFA', 1: 'duel', 3: 'CTF', 4: 'TDM' }[n] ?? `type ${n}`);
 const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+// flag fields arrive as numbers (master JSON) or strings ('0'/'1', status
+// probe); normalize so '0' is not truthy
+const flagOn = (v) => v !== null && v !== undefined && v !== '' && v !== '0' && v !== 0;
 const mCount = (s) => {
   const i = (s || {}).info || {};
   return Array.isArray(i.users) ? i.users.length : (Number.isFinite(Number(i.users)) ? Number(i.users) : (Number.isFinite(Number(i.players)) ? Number(i.players) : 0));
@@ -483,8 +508,8 @@ async function zipMapNames(url) {
 }
 
 // Called after the maps are indexed; the second pass marks joinability.
-function serverOption(s, haveMap) {
-  const info = s.info || {};
+function serverOption(s, haveMap, extra) {
+  const info = Object.assign({}, s.info || {}, extra || {});
   const host = s.host || info.host || '?';
   // users is a player list in the master's status (count twice: some
   // relays give the number directly); coerce both shapes safely
@@ -496,17 +521,67 @@ function serverOption(s, haveMap) {
   const opt = document.createElement('option');
   opt.value = [host, s.proxyPort, info.targetPort ?? s.targetPort, s.secure ? 1 : 0].join('|');
   opt.textContent = label;
-  if (info.g_needpass) {
+  if (flagOn(info.g_needpass)) {
     opt.disabled = true;
     opt.textContent += ' · passworded';
-  } else if ((info.fs_game && info.fs_game !== info.gamename)) {
+  } else if (info.fs_game && info.fs_game !== 'baseq3') {
     opt.disabled = true;                       // mod pk3s we do not host
     opt.textContent += ` · needs ${trunc(info.fs_game, 12)} mod`;
+  } else if (info.gamename && info.gamename !== 'baseq3') {
+    // CPMA/OpenArena-style servers ship their own VMs/pk3s; grey them even
+    // when the heartbeat's fs_game is empty
+    opt.disabled = true;
+    opt.textContent += ` · needs ${trunc(info.gamename, 12)} mod`;
   } else if (haveMap && info.mapname && !haveMap.has(info.mapname)) {
     opt.disabled = true;                       // map not in our download set
     opt.textContent += ' · map not available';
   }
   return opt;
+}
+
+// The master's heartbeat list does not carry a server's real mod directory.
+// Probe each listed host through its own websocket gateway with an out-of-band
+// getstatus — the same datagram the engine sends when connecting — and use the
+// authoritative fs_game/mapname to grey out servers needing mods we do not host.
+function probeStatus(host, proxyPort, secure) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let ws = null;
+    const timer = setTimeout(() => finish(null), 3500);
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws && ws.close(); } catch (e) {}
+      resolve(result);
+    };
+    try {
+      ws = new WebSocket(`${secure ? 'wss' : 'ws'}://${host}:${proxyPort}/ws`, 'binary');
+    } catch (e) {
+      finish(null);
+      return;
+    }
+    ws.binaryType = 'arraybuffer';
+    ws.addEventListener('open', () => {
+      const cmd = 'getstatus\n';
+      const pkt = new Uint8Array(4 + cmd.length);
+      pkt.set([0xff, 0xff, 0xff, 0xff], 0);
+      for (let i = 0; i < cmd.length; i++) pkt[4 + i] = cmd.charCodeAt(i);
+      ws.send(pkt);
+    });
+    ws.addEventListener('message', (ev) => {
+      const text = new TextDecoder().decode(new Uint8Array(ev.data).subarray(4));
+      if (!/^statusResponse\n/.test(text)) return;
+      // first line after the command is the "\key\value" infostring
+      const infostr = text.slice('statusResponse\n'.length).split('\n')[0];
+      const parts = infostr.split('\\');
+      const info = {};
+      for (let i = 1; i < parts.length - 1; i += 2) info[parts[i]] = parts[i + 1];
+      finish(info);
+    });
+    ws.addEventListener('error', () => finish(null));
+    ws.addEventListener('close', () => finish(null));
+  });
 }
 
 async function refreshServers() {
@@ -523,9 +598,21 @@ async function refreshServers() {
       .filter((s) => s && s.host)
       .sort((a, b) =>
         (b.official - a.official) ||
-        (mCount(b) - mCount(a)));
+        (mCount(b) - mCount(a)) ||
+        String(a.host).localeCompare(String(b.host)));
     const haveMap = await mapSet();
-    serverSelect.replaceChildren(localOption(), ...listed.map((s) => serverOption(s, haveMap)));
+    const render = (entries) =>
+      serverSelect.replaceChildren(localOption(), ...entries.map((e) => serverOption(e.s, haveMap, e.extra)));
+    const entries = listed.map((s) => ({ s, extra: null }));
+    render(entries);
+    serverHint.textContent = 'pick a server — grayed ones need extra pk3s this site does not host';
+    // second pass: entries whose mod/world info only shows in the live status
+    await Promise.all(entries.map(async (e) => {
+      if (e.s.info && flagOn(e.s.info.g_needpass)) return;  // already settled
+      const probed = await probeStatus(e.s.host, e.s.proxyPort, e.s.secure);
+      if (probed) e.extra = probed;
+    }));
+    render(entries);
     serverHint.textContent = 'pick a server — grayed ones need extra pk3s this site does not host';
   } catch (e) {
     serverHint.textContent = `server list unavailable (${e && e.message || e}) — joining this server`;
