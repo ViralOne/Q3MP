@@ -424,6 +424,10 @@ const directServer = Boolean(params.get('server') || params.get('connect'));
 
 const gametypeName = (n) => ({ 0: 'FFA', 1: 'duel', 3: 'CTF', 4: 'TDM' }[n] ?? `type ${n}`);
 const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+const mCount = (s) => {
+  const i = (s || {}).info || {};
+  return Array.isArray(i.users) ? i.users.length : (Number.isFinite(Number(i.users)) ? Number(i.users) : (Number.isFinite(Number(i.players)) ? Number(i.players) : 0));
+};
 
 // Which maps this browser can actually load: basenames of every maps/*.bsp in
 // the pk3s we download, indexed once via small HTTP range requests against the
@@ -479,7 +483,10 @@ async function zipMapNames(url) {
 function serverOption(s, haveMap) {
   const info = s.info || {};
   const host = s.host || info.host || '?';
-  const count = `${info.users ?? info.players ?? 0}/${info.sv_maxclients || '?'}`;
+  // users is a player list in the master's status (count twice: some
+  // relays give the number directly); coerce both shapes safely
+  const players = Array.isArray(info.users) ? info.users.length : (Number.isFinite(Number(info.players)) ? Number(info.players) : 0);
+  const count = `${players}/${info.sv_maxclients || '?'}`;
   const ping = info.ping != null ? ` ~${info.ping}ms` : '';
   const own = (host === location.hostname && s.proxyPort === 443) ? ' (this server)' : '';
   const label = `${trunc(host, 24)}${own} — ${info.mapname || '?'} · ${gametypeName(info.g_gametype)} · ${count}${ping}`;
@@ -511,7 +518,9 @@ async function refreshServers() {
     const { servers } = await r.json();
     const listed = (Array.isArray(servers) ? servers : [])
       .filter((s) => s && s.host)
-      .sort((a, b) => (b.official - a.official) || ((b.info?.users ?? 0) - (a.info?.users ?? 0)));
+      .sort((a, b) =>
+        (b.official - a.official) ||
+        (mCount(b) - mCount(a)));
     const haveMap = await mapSet();
     serverSelect.replaceChildren(localOption(), ...listed.map((s) => serverOption(s, haveMap)));
     serverHint.textContent = 'pick a server — grayed ones need extra pk3s this site does not host';
