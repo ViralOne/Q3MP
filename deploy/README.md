@@ -139,6 +139,17 @@ show a map gallery with each map's `levelshots/<map>.jpg|tga` screenshot,
 served by the gateway at `/levelshot/<map>`; the map being played is marked.
 In the admin panel, click a screenshot to select it, then **Load Map**.
 
+**Upload from the browser:** the admin panel's *Upload maps* card puts
+`.pk3` files straight into the game dir (password required, max
+`MAX_UPLOAD_MB`, default 300 MB). Only map pk3s are accepted: the file must
+contain `maps/*.bsp`, must not carry game code (`vm/`, `.qvm`, native
+libraries), and cannot replace or delete retail `pak*.pk3` / `zz-*.pk3`. The
+game server only loads new pk3s when it starts, so press **Restart server to
+load** afterwards (~10 s, everyone reconnects). Works with the all-in-one
+image; the three-container stack mounts the data read-only for the gateway,
+so there the card stays disabled. Behind Cloudflare, uploads over 100 MB
+(free plan limit) must go through the LAN address instead.
+
 Play them via the admin panel (Map card), `callvote map <name>` in-game, or
 the rotation in `server/defaults/baseq3.cfg` / `Q3JS_SERVER_CONFIG`. The map
 name is the `maps/<name>.bsp` inside the pk3, not the pk3's file name

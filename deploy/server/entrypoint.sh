@@ -24,6 +24,10 @@ mkdir -p "$FS_BASEPATH/$BASEGAME" "$FS_HOMEPATH"
 # The VMs (cgame/qagame/ui) come from the point-release paks themselves:
 # pak7/pak8 carry the official 1.32 QVMs, so nothing needs to be staged here.
 
+# Drop links to paks that were removed from the data mount since the last
+# start (admin-panel map deletes), then link the current ones.
+find "$FS_BASEPATH/$BASEGAME" -maxdepth 1 -type l ! -exec test -e {} \; -delete
+
 # Link the paks from the data mount into the staged game dir.
 if [ ! -f "$Q3_DATA_DIR/pak0.pk3" ]; then
   echo "DEPLOY-WARN: no pak0.pk3 at $Q3_DATA_DIR - game data is missing." >&2

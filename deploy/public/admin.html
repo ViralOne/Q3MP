@@ -102,6 +102,17 @@
 </div>
 
 <div class="card">
+  <h2>Upload maps</h2>
+  <div class="row">
+    <input id="pakFiles" type="file" accept=".pk3" multiple>
+    <button id="pakUpload">Upload</button>
+    <button class="ghost" id="pakRestart" title="the game server only loads new pk3s when it starts">Restart server to load</button>
+  </div>
+  <div class="kv" id="pakState" style="font-size:12px;margin-bottom:8px">unlock with the password to manage map pk3s</div>
+  <table id="pakList"></table>
+</div>
+
+<div class="card">
   <h2>Flags (server rules)</h2>
   <div id="flags" class="row"></div>
   <span class="kv">ticks are stored in the server config; unchecked means the engine default</span>
@@ -172,6 +183,7 @@ async function unlock() {
     if (response.ok) {
       sessionStorage.setItem(pwKey, pw);
       $('pwState').textContent = 'unlocked — password accepted for this browser tab';
+      loadPaks();
       return true;
     }
     $('pwState').textContent =
@@ -445,10 +457,94 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// --- map pk3 upload / delete (gateway /admin/api/paks) ----------------------------
+
+function fmtSize(n) {
+  return n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`;
+}
+
+async function loadPaks() {
+  if (!$('pw').value) return;
+  try {
+    const response = await fetch('/admin/api/paks', { headers: { 'x-admin-password': $('pw').value } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { $('pakState').textContent = body.error || `HTTP ${response.status}`; return; }
+    $('pakState').textContent = body.writable
+      ? `drop .pk3 map files here (max ${body.maxUploadMb} MB each, maps only — no game code), then restart the server`
+      : 'the data folder is read-only for the gateway — uploads are disabled (all-in-one image mounts it writable)';
+    $('pakUpload').disabled = !body.writable;
+    $('pakList').innerHTML = '<tr><th>pk3</th><th>size</th><th>maps</th><th></th></tr>' +
+      body.files.map((f) =>
+        `<tr><td>${escapeHtml(f.name)}</td><td>${fmtSize(f.size)}</td>` +
+        `<td>${escapeHtml(f.maps.length > 4 ? `${f.maps.slice(0, 4).join(', ')} +${f.maps.length - 4}` : f.maps.join(', ') || '—')}</td>` +
+        `<td>${f.custom && body.writable ? `<button class="ghost" style="padding:2px 8px" data-delpak="${escapeHtml(f.name)}">delete</button>` : ''}</td></tr>`).join('');
+    for (const b of document.querySelectorAll('button[data-delpak]')) {
+      b.addEventListener('click', () => deletePak(b.dataset.delpak));
+    }
+  } catch (e) {
+    $('pakState').textContent = 'pk3 list failed: ' + (e && e.message || e);
+  }
+}
+
+// XMLHttpRequest rather than fetch: it reports upload progress
+function uploadPak(file) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', `/admin/api/paks/${encodeURIComponent(file.name)}`);
+    xhr.setRequestHeader('x-admin-password', $('pw').value);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) $('pakState').textContent = `uploading ${file.name}: ${Math.round(e.loaded / e.total * 100)}%`;
+    };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch {}
+      resolve(xhr.status === 201
+        ? `${file.name}: uploaded (${(body.maps || []).join(', ')})`
+        : `${file.name}: ${body.error || `HTTP ${xhr.status}`}`);
+    };
+    xhr.onerror = () => resolve(`${file.name}: upload failed (network)`);
+    xhr.send(file);
+  });
+}
+
+$('pakUpload').addEventListener('click', async () => {
+  const files = [...$('pakFiles').files];
+  if (!files.length) { $('pakState').textContent = 'choose one or more .pk3 files first'; return; }
+  $('pakUpload').disabled = true;
+  const results = [];
+  for (const file of files) results.push(await uploadPak(file));
+  $('pakFiles').value = '';
+  $('pakUpload').disabled = false;
+  out('> upload\n' + results.join('\n') + '\n(restart the server to load new maps)');
+  await loadPaks();
+  $('pakState').textContent = results.join(' · ') + ' — restart the server to load them';
+  loadMapList();
+});
+
+async function deletePak(name) {
+  if (!confirm(`Delete ${name} from the server? Players on one of its maps will be dropped after the restart.`)) return;
+  const response = await fetch(`/admin/api/paks/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    headers: { 'x-admin-password': $('pw').value },
+  });
+  const body = await response.json().catch(() => ({}));
+  out(`> delete ${name}\n${response.ok ? 'deleted — restart the server to unload it' : 'ERROR: ' + (body.error || response.status)}`);
+  await loadPaks();
+  loadMapList();
+}
+
+$('pakRestart').addEventListener('click', async () => {
+  if (!confirm('Restart the game server now? Everyone is disconnected for ~10 seconds.')) return;
+  await rcon('quit');
+  $('st').textContent = 'server restarting — it comes back in about 10 seconds';
+  setTimeout(() => { loadMapList(); refresh(); }, 12000);
+});
+
 $('refresh').addEventListener('click', refresh);
 setInterval(refresh, 5000);
 refresh();
 loadMapList();
+loadPaks();
 </script>
 </body>
 </html>

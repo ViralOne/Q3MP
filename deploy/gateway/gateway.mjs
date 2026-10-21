@@ -16,6 +16,8 @@
 //   MAX_BUFFERED_BYTES  server->client frame drops beyond this backpressure (default 1048576)
 //   IDLE_TIMEOUT_MS  close connection keys idle for this long (default 120000)
 //   RCON_PASSWORD   shared secret for the /admin/api endpoints (empty = admin API off)
+//   GAME_DATA_DIR   served game dir: map list, levelshots, admin pk3 uploads (default /data/baseq3)
+//   MAX_UPLOAD_MB   largest map pk3 the admin panel may upload (default 300)
 //   Q3JS_MASTER_URL master registry serving GET /api/servers for the launcher
 //                   server list relay (default https://master.q3js.com);
 //                   also the heartbeat target used by master-heartbeat.mjs
@@ -24,7 +26,7 @@ import { createServer } from "node:http";
 import { createSocket } from "node:dgram";
 import { timingSafeEqual } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
-import { readdirSync, openSync, readSync, fstatSync, closeSync } from "node:fs";
+import { readdirSync, openSync, readSync, fstatSync, closeSync, statSync, accessSync, constants as fsConstants, createWriteStream, renameSync, unlinkSync } from "node:fs";
 import { basename } from "node:path";
 import { WebSocketServer } from "ws";
 
@@ -50,6 +52,8 @@ const options = {
   idleTimeoutMs: num("IDLE_TIMEOUT_MS", 120_000),
   rconPassword: env("RCON_PASSWORD", ""),
   mapsDir: env("GAME_DATA_DIR", "/data/baseq3"),
+  // largest map pk3 the admin panel may upload
+  maxUploadBytes: num("MAX_UPLOAD_MB", 300) * 1024 * 1024,
 };
 
 // Q3 servers drop a client fully only after SV_TIMEOUT (default 20s). Sending a
@@ -135,7 +139,7 @@ async function rconCommand(command) {
 
 function authorized(body) {
   if (!options.rconPassword) return false;
-  const given = Buffer.from(String(body.password ?? ""));
+  const given = Buffer.from(String(body?.password ?? ""));
   const known = Buffer.from(options.rconPassword);
   return given.length === known.length && timingSafeEqual(given, known);
 }
@@ -298,6 +302,81 @@ function zipEntries(path) {
   }
 }
 
+// --- custom map pk3s (admin upload / delete) -------------------------------------
+//
+// Only map content: retail paks (pak*.pk3) and this stack's own zz-*.pk3 can
+// never be replaced or removed, and a pk3 carrying game code (vm/, qvm, native
+// libraries) is refused — maps must not be able to swap the server's or the
+// browsers' game modules.
+
+const CUSTOM_PAK = /^(?!pak\d|zz-)[a-z0-9][\w.-]{0,63}\.pk3$/i;
+
+function dataWritable() {
+  try { accessSync(options.mapsDir, fsConstants.W_OK); return true; } catch { return false; }
+}
+
+function listPaks() {
+  return readdirSync(options.mapsDir)
+    .filter((f) => /^[\w.-]+\.pk3$/i.test(f))
+    .sort()
+    .map((name) => {
+      const path = `${options.mapsDir}/${name}`;
+      let maps = [];
+      try {
+        maps = zipEntries(path)
+          .map((e) => e.name.toLowerCase())
+          .filter((n) => n.startsWith("maps/") && n.endsWith(".bsp"))
+          .map((n) => n.slice(5, -4));
+      } catch { /* unreadable pk3: listed without maps */ }
+      return { name, size: statSync(path).size, custom: CUSTOM_PAK.test(name), maps };
+    });
+}
+
+// Stream the request body into a temp file next to the target, enforcing the
+// size cap, then validate it as a maps-only pk3 before it takes its name.
+function receivePak(request, name) {
+  return new Promise((resolve, reject) => {
+    const target = `${options.mapsDir}/${name}`;
+    const temp = `${options.mapsDir}/.upload-${process.pid}-${Date.now()}.tmp`;
+    const out = createWriteStream(temp, { flags: "wx" });
+    let bytes = 0;
+    let failed = false;
+    const fail = (error) => {
+      if (failed) return;
+      failed = true;
+      request.unpipe(out);
+      out.destroy();
+      try { unlinkSync(temp); } catch { /* never written */ }
+      reject(error);
+    };
+    request.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > options.maxUploadBytes) {
+        fail(Object.assign(new Error(`larger than ${options.maxUploadBytes >> 20} MB`), { status: 413 }));
+        request.resume();
+      }
+    });
+    request.on("error", fail);
+    out.on("error", fail);
+    out.on("finish", () => {
+      if (failed) return;
+      try {
+        const names = zipEntries(temp).map((e) => e.name.toLowerCase());
+        const maps = names.filter((n) => n.startsWith("maps/") && n.endsWith(".bsp"));
+        if (!maps.length) throw Object.assign(new Error("no maps/*.bsp inside — not a map pk3"), { status: 400 });
+        const code = names.find((n) => n.startsWith("vm/") || /\.(qvm|dll|so|dylib)$/.test(n));
+        if (code) throw Object.assign(new Error(`contains game code (${code}) — maps only`), { status: 400 });
+        renameSync(temp, target);
+        resolve({ name, size: bytes, maps: maps.map((n) => n.slice(5, -4)) });
+      } catch (error) {
+        try { unlinkSync(temp); } catch { /* already gone */ }
+        reject(error.status ? error : Object.assign(new Error(`not a valid pk3: ${error.message}`), { status: 400 }));
+      }
+    });
+    request.pipe(out);
+  });
+}
+
 const readBody = (request) =>
   new Promise((resolve) => {
     const chunks = [];
@@ -418,6 +497,57 @@ async function handleAdmin(request, response) {
       const { maps, warning } = listAvailableMaps();
       respond(response, 200, { maps, warning });
       return true;
+    }
+    // custom map pk3s: list / upload (PUT raw bytes) / delete; the password
+    // travels in a header because the upload body is the pk3 itself
+    const pakPath = /^\/admin\/api\/paks(?:\/([^/]+))?$/.exec(url.pathname);
+    if (pakPath) {
+      if (!authorized({ password: request.headers["x-admin-password"] })) {
+        request.resume();
+        return respond(response, 403, { error: "bad password" }), true;
+      }
+      const name = pakPath[1] ? decodeURIComponent(pakPath[1]) : "";
+      if (!name && request.method === "GET") {
+        respond(response, 200, {
+          files: listPaks(),
+          writable: dataWritable(),
+          maxUploadMb: options.maxUploadBytes >> 20,
+        });
+        return true;
+      }
+      if (!CUSTOM_PAK.test(name)) {
+        request.resume();
+        return respond(response, 400, { error: "name must be <name>.pk3 (letters, digits, . _ -), not pak*/zz-*" }), true;
+      }
+      if (!dataWritable()) {
+        request.resume();
+        return respond(response, 409, { error: `${options.mapsDir} is read-only for the gateway (mount it writable to manage maps)` }), true;
+      }
+      const target = `${options.mapsDir}/${name}`;
+      let exists = false;
+      try { statSync(target); exists = true; } catch { /* new file */ }
+      if (request.method === "PUT") {
+        if (exists) {
+          request.resume();
+          return respond(response, 409, { error: `${name} already exists — delete it first` }), true;
+        }
+        try {
+          const saved = await receivePak(request, name);
+          mapsCache.at = 0;
+          respond(response, 201, { ...saved, note: "restart the server to load it" });
+        } catch (error) {
+          respond(response, error.status || 500, { error: String(error.message || error) });
+        }
+        return true;
+      }
+      if (request.method === "DELETE") {
+        if (!exists) return respond(response, 404, { error: `${name} not found` }), true;
+        unlinkSync(target);
+        mapsCache.at = 0;
+        respond(response, 200, { deleted: name, note: "restart the server to unload it" });
+        return true;
+      }
+      return respond(response, 405, { error: "method not allowed" }), true;
     }
     if (url.pathname === "/admin/api/rcon" && request.method === "POST") {
       const body = await readBody(request);
