@@ -288,7 +288,29 @@ const files = gameId === 'baseq3'
 // so official q3js.com servers (built on q3js's own baseq3 set — a different
 // pak0 than retail) must load q3js's published files, not this site's. They
 // are cached under their own OPFS namespace so the two sets never collide.
-const localAssets = { base: dataBase, files, cacheNs: '' };
+
+// What this server actually hosts (gateway /paks): custom map pk3s dropped
+// into quake3-data/<game>/ get downloaded too. Falls back to the fixed list
+// above for a ?data= override, an older gateway, or another game dir.
+let localFilesPromise = null;
+function localFiles() {
+  if (params.get('data')) return Promise.resolve(files);
+  localFilesPromise ??= fetch('/paks', { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then(({ game, files: names }) => {
+      if (game !== gameId) throw new Error(`server hosts ${game}, not ${gameId}`);
+      const list = (Array.isArray(names) ? names : [])
+        .filter((n) => /^[\w.-]+\.pk3$/i.test(n))
+        .map((n) => `${gameId}/${n}`);
+      if (!list.length) throw new Error('no pk3s listed');
+      return list;
+    })
+    .catch((e) => {
+      console.error(`pak list: ${e && e.message || e} - using the default set`);
+      return files;
+    });
+  return localFilesPromise;
+}
 const q3jsStatic = 'https://static.q3js.com/';
 async function q3jsAssets() {
   const r = await fetch(new URL('baseq3/manifest.json', q3jsStatic), { cache: 'no-store' });
@@ -489,7 +511,7 @@ let mapSets = null;
 async function mapSet() {
   if (mapSets) return mapSets;
   const names = new Set();
-  await Promise.all(files.map(async (rel) => {
+  await Promise.all((await localFiles()).map(async (rel) => {
     try {
       const url = new URL(rel, new URL(dataBase, location.href)).href;
       for (const n of await zipMapNames(url)) names.add(n);
@@ -840,7 +862,9 @@ async function start() {
   document.getElementById('bootNew').style.display = '';
 
   try {
-    const assets = official ? await q3jsAssets() : localAssets;
+    const assets = official
+      ? await q3jsAssets()
+      : { base: dataBase, files: await localFiles(), cacheNs: '' };
     await loadGame(playerName, playerModel, useConnect, useGateway, assets);
   } catch (e) {
     fail(String(e && e.message || e));

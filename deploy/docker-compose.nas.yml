@@ -1,0 +1,50 @@
+# All-in-one Q3 stack behind an existing reverse proxy (Caddy on the NAS,
+# Cloudflare in front). The proxy terminates TLS; this container serves plain
+# HTTP on the loopback port below and never requests certificates itself.
+#
+#   docker compose -f docker-compose.nas.yml up -d
+#
+# Needs a .env next to this file with at least:
+#   RCON_PASSWORD=<long random password>     # admin panel + rcon
+#   PUBLIC_HOST=quake.example.com            # the domain Caddy/Cloudflare serve
+#   BIND_IP=192.168.0.103  HTTP_PORT=3935    # where the front Caddy proxies to
+services:
+  q3:
+    image: ghcr.io/viralone/q3mp-allinone:${Q3_TAG:-latest}
+    environment:
+      # Caddyfile site address ":80" = plain HTTP, no automatic HTTPS
+      # (the NAS Caddy + Cloudflare handle TLS for the public domain).
+      DOMAIN: ":80"
+      FS_BASEGAME: "${FS_BASEGAME:-baseq3}"
+      RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD in .env}"
+      # List on q3js.com: players reach the gateway at wss://PUBLIC_HOST/ws
+      # through Cloudflare + Caddy. Leave PUBLIC_HOST empty to stay unlisted.
+      Q3JS_MASTER_URL: "https://master.q3js.com"
+      Q3JS_PUBLISH_HOST: "${PUBLIC_HOST:-}"
+      Q3JS_PUBLISH_PORT: "443"
+      Q3JS_SECURE: "true"
+      MAX_CONNECTIONS: "64"
+    volumes:
+      # pak0.pk3..pak8.pk3 in ./quake3-data/baseq3/ (writable: zz-cgame.pk3)
+      - ./quake3-data:/data
+      - server-state:/state
+      - caddy-state:/caddy
+    ports:
+      # Plain HTTP for the front proxy only. BIND_IP=127.0.0.1 when Caddy runs
+      # on this host; the NAS LAN IP when Caddy reaches it over the LAN
+      # (reverse_proxy <BIND_IP>:<HTTP_PORT>). Never 0.0.0.0.
+      - "${BIND_IP:-127.0.0.1}:${HTTP_PORT:-8090}:80/tcp"
+      # No UDP published: browser players connect over wss://<domain>/ws
+      # through Cloudflare, so the home IP stays hidden. Desktop ioquake3
+      # clients would need "27960:27960/udp" plus a router port-forward.
+    restart: unless-stopped
+    # networks: [proxy]
+
+# For a Caddy container: put both on one network and proxy to q3:80.
+# networks:
+#   proxy:
+#     external: true
+
+volumes:
+  server-state:
+  caddy-state:

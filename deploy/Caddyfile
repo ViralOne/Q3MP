@@ -20,6 +20,12 @@
 		reverse_proxy gateway:8080
 	}
 
+	# launcher download list: every pk3 in the served game dir
+	@paks path /paks
+	handle @paks {
+		reverse_proxy gateway:8080
+	}
+
 	# launcher server picker: relay of the Q3JS master's community list
 	@master_servers path /servers
 	handle @master_servers {

@@ -126,6 +126,20 @@ stop that one first, or set `HTTP_PORT` / `HTTPS_PORT` / `GAME_UDP_PORT`.
 into it); TLS certificates persist in the `caddy-state` volume. Inside the
 container the gateway and Caddy's admin endpoint listen on loopback only.
 
+## Custom maps
+
+Drop map pk3s into `quake3-data/baseq3/` (or the active game dir) and restart
+the server container. The server loads every `*.pk3` there, and the launcher
+asks the gateway (`/paks`) for that same list, so browsers download the new
+maps too (cached after the first time). The admin panel's map list picks them
+up within a minute.
+
+Play them via the admin panel (Map card), `callvote map <name>` in-game, or
+the rotation in `server/defaults/baseq3.cfg` / `Q3JS_SERVER_CONFIG`. The map
+name is the `maps/<name>.bsp` inside the pk3, not the pk3's file name
+(`unzip -Z1 file.pk3 | grep bsp`). Maps without a `.aas` file have no bot
+navigation, so bots stand still there.
+
 ## Player-facing URLs
 
 | URL | Description |

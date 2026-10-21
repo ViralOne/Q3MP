@@ -24,6 +24,7 @@ import { createServer } from "node:http";
 import { createSocket } from "node:dgram";
 import { timingSafeEqual } from "node:crypto";
 import { readdirSync, openSync, readSync, fstatSync, closeSync } from "node:fs";
+import { basename } from "node:path";
 import { WebSocketServer } from "ws";
 
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
@@ -240,6 +241,21 @@ async function handleAdmin(request, response) {
       target: `${options.targetHost}:${options.targetPort}`,
       admin: Boolean(options.rconPassword),
     });
+    return true;
+  }
+  // Public list of the pk3s the launcher must download for this server: every
+  // *.pk3 in the served game dir (retail paks, zz-cgame, any custom maps), so
+  // dropping a map pk3 into quake3-data/<game>/ reaches browsers too. Names
+  // only — the files themselves are already public under /assets/<game>/.
+  if (url.pathname === "/paks" && request.method === "GET") {
+    try {
+      const files = readdirSync(options.mapsDir)
+        .filter((f) => /^[\w.-]+\.pk3$/i.test(f))
+        .sort();
+      respond(response, 200, { game: basename(options.mapsDir), files });
+    } catch (error) {
+      respond(response, 500, { error: `cannot list paks: ${error && error.message || error}` });
+    }
     return true;
   }
   // Public relay of the Q3JS master's community server list, used by the
