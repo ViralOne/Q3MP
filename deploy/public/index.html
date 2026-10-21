@@ -284,6 +284,31 @@ const files = gameId === 'baseq3'
   : [`demoq3/pak0.pk3`,
      `demoq3/map_oxodm1.pk3`, `demoq3/map_oxodm6.pk3`, `demoq3/padcrash.pk3`];
 
+// The asset set a join needs. Pure servers only accept the exact paks they run,
+// so official q3js.com servers (built on q3js's own baseq3 set — a different
+// pak0 than retail) must load q3js's published files, not this site's. They
+// are cached under their own OPFS namespace so the two sets never collide.
+const localAssets = { base: dataBase, files, cacheNs: '' };
+const q3jsStatic = 'https://static.q3js.com/';
+async function q3jsAssets() {
+  const r = await fetch(new URL('baseq3/manifest.json', q3jsStatic), { cache: 'no-store' });
+  if (!r.ok) throw new Error(`q3js manifest: HTTP ${r.status}`);
+  const { files: names } = await r.json();
+  const list = (Array.isArray(names) ? names : [])
+    .filter((n) => /^[\w.-]+\.pk3$/i.test(n))
+    .map((n) => `baseq3/${n}`);
+  if (!list.length) throw new Error('q3js manifest lists no pk3s');
+  return { base: q3jsStatic, files: list, cacheNs: 'q3js' };
+}
+
+// An https page cannot open plain ws:// sockets (mixed content), so the
+// challenge never leaves the browser. Gateways listed as insecure are reached
+// over wss on 443 instead (Caddy-style stacks serve /ws on both).
+function wsUrl(host, proxyPort, secure) {
+  if (!secure && location.protocol === 'https:') return `wss://${host}/ws`;
+  return `${secure ? 'wss' : 'ws'}://${host}:${proxyPort}/ws`;
+}
+
 function dirOf(rel) { return `/${rel.split('/')[0]}`; }
 function baseOf(rel) { return rel.match(/[^/]+$/)[0]; }
 
@@ -519,7 +544,7 @@ function serverOption(s, haveMap, extra) {
   const own = (host === location.hostname && s.proxyPort === 443) ? ' (this server)' : '';
   const label = `${trunc(host, 24)}${own} — ${info.mapname || '?'} · ${gametypeName(info.g_gametype)} · ${count}${ping}`;
   const opt = document.createElement('option');
-  opt.value = [host, s.proxyPort, info.targetPort ?? s.targetPort, s.secure ? 1 : 0].join('|');
+  opt.value = [host, s.proxyPort, info.targetPort ?? s.targetPort, s.secure ? 1 : 0, s.official ? 1 : 0].join('|');
   opt.textContent = label;
   if (flagOn(info.g_needpass)) {
     opt.disabled = true;
@@ -532,7 +557,8 @@ function serverOption(s, haveMap, extra) {
     // when the heartbeat's fs_game is empty
     opt.disabled = true;
     opt.textContent += ` · needs ${trunc(info.gamename, 12)} mod`;
-  } else if (haveMap && info.mapname && !haveMap.has(info.mapname)) {
+  } else if (!s.official && haveMap && info.mapname && !haveMap.has(info.mapname)) {
+    // (official servers load q3js's own pak set at join, not ours)
     opt.disabled = true;                       // map not in our download set
     opt.textContent += ' · map not available';
   }
@@ -556,7 +582,7 @@ function probeStatus(host, proxyPort, secure) {
       resolve(result);
     };
     try {
-      ws = new WebSocket(`${secure ? 'wss' : 'ws'}://${host}:${proxyPort}/ws`, 'binary');
+      ws = new WebSocket(wsUrl(host, proxyPort, secure), 'binary');
     } catch (e) {
       finish(null);
       return;
@@ -668,7 +694,7 @@ async function saveMeta(root, meta) {
 async function clearCache() {
   const root = await getCacheRoot();
   if (!root) { say('no persistent cache in this browser'); return; }
-  for (const d of ['baseq3', 'demoq3']) {
+  for (const d of ['baseq3', 'demoq3', 'q3js']) {
     await root.removeEntry(d, { recursive: true }).catch(() => {});
   }
   await root.removeEntry('meta.json').catch(() => {});
@@ -687,8 +713,9 @@ navigator.storage?.persist?.().then((ok) => {
 
 // Download (or restore from OPFS) one asset. `progress` collects
 // {received,total} entries so the bar reflects real byte counts.
-async function acquire(root, meta, rel, progress) {
-  const url = new URL(rel, new URL(dataBase, location.href));
+async function acquire(root, meta, rel, progress, assets) {
+  const url = new URL(rel, new URL(assets.base, location.href));
+  const key = assets.cacheNs ? `${assets.cacheNs}/${rel}` : rel;
   const entry = { rel, name: baseOf(rel), dir: dirOf(rel), received: 0, total: 0, fromCache: false, handle: null, buf: null };
 
   // freshness probe (a few hundred bytes) — also gives a size for the progress bar
@@ -703,10 +730,14 @@ async function acquire(root, meta, rel, progress) {
 
   let opfsDir = null;
   if (root) {
-    opfsDir = await root.getDirectoryHandle(rel.split('/')[0], { create: true }).catch(() => null);
+    let dir = root;
+    for (const part of key.split('/').slice(0, -1)) {
+      dir = dir && await dir.getDirectoryHandle(part, { create: true }).catch(() => null);
+    }
+    opfsDir = dir;
   }
 
-  const cached = meta[rel];
+  const cached = meta[key];
   if (opfsDir && cached) {
     try {
       const handle = await opfsDir.getFileHandle(entry.name);
@@ -743,7 +774,7 @@ async function acquire(root, meta, rel, progress) {
       }
       await writable.close();
       entry.handle = handle;
-      meta[rel] = { etag, size: entry.received };
+      meta[key] = { etag, size: entry.received };
       wrote = true;
     } catch (e) {
       console.error(`cache write failed for ${rel}: ${e && e.message || e}`);
@@ -790,11 +821,13 @@ async function start() {
   // picker's selection, falling back to this stack for the default entry.
   let useGateway = gatewayUrl;
   let useConnect = connectAddress;
+  let official = false;
   if (!directServer) {
     const pick = (serverSelect.value || '').split('|');
-    if (pick.length === 4 && pick[0]) {
+    if (pick.length === 5 && pick[0]) {
       const [host, proxyPort, targetPort, secure] = pick;
-      useGateway = `${secure === '1' ? 'wss' : 'ws'}://${host}:${proxyPort}/ws`;
+      official = pick[4] === '1';
+      useGateway = wsUrl(host, proxyPort, secure === '1');
       useConnect = `${host}:${targetPort}`;
       logLine(`joining ${host} — udp ${useConnect} via ${useGateway}`);
     }
@@ -807,13 +840,14 @@ async function start() {
   document.getElementById('bootNew').style.display = '';
 
   try {
-    await loadGame(playerName, playerModel, useConnect, useGateway);
+    const assets = official ? await q3jsAssets() : localAssets;
+    await loadGame(playerName, playerModel, useConnect, useGateway, assets);
   } catch (e) {
     fail(String(e && e.message || e));
   }
 }
 
-async function loadGame(playerName, playerModel, useConnect, useGateway) {
+async function loadGame(playerName, playerModel, useConnect, useGateway, assets) {
   say(`preparing ${gameId} data…`);
   barBox.style.display = 'block';
 
@@ -823,9 +857,9 @@ async function loadGame(playerName, playerModel, useConnect, useGateway) {
     if (root) {
       const meta = await loadMeta(root);
       const progress = [];
-      for (const rel of files) {
+      for (const rel of assets.files) {
         try {
-          const entry = await acquire(root, meta, rel, progress);
+          const entry = await acquire(root, meta, rel, progress, assets);
           results.push(entry);
           if (entry.fromCache) say(`${rel}: cached`);
           else if (entry.handle) say(`${rel}: downloaded ${cacheDoneMb(progress)} MB`);
@@ -841,9 +875,9 @@ async function loadGame(playerName, playerModel, useConnect, useGateway) {
 
   if (!results.length) {
     // last-ditch plain fetch, no cache
-    for (const rel of files) {
+    for (const rel of assets.files) {
       try {
-        const response = await fetch(new URL(rel, new URL(dataBase, location.href)), { cache: 'force-cache' });
+        const response = await fetch(new URL(rel, new URL(assets.base, location.href)), { cache: 'force-cache' });
         if (!response.ok) throw new Error(`${rel}: HTTP ${response.status}`);
         const data = await response.arrayBuffer();
         results.push({ rel, name: baseOf(rel), dir: dirOf(rel), buf: data, handle: null, received: data.byteLength, total: data.byteLength });
@@ -854,7 +888,7 @@ async function loadGame(playerName, playerModel, useConnect, useGateway) {
     }
   }
   if (!results.length) {
-    throw new Error(`No PK3 files found under ${dataBase}${gameId}/ - game data missing`);
+    throw new Error(`No PK3 files found under ${assets.base}${gameId}/ - game data missing`);
   }
   say(`assets ready (${cacheDoneMb(results)} MB)`);
 
@@ -873,6 +907,8 @@ async function loadGame(playerName, playerModel, useConnect, useGateway) {
       '+set', 'name', playerName,
       '+set', 'model', playerModel,
       '+set', 'in_wheelPx', String(wheelPx),
+      // like the official q3js client: fetch any server-referenced pk3 we lack
+      ...(assets.cacheNs === 'q3js' ? ['+set', 'cl_allowDownload', '1'] : []),
       '+connect', useConnect,
     ],
     locateFile: (file) => new URL(file, location.href).href,
