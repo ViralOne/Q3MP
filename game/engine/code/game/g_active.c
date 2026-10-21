@@ -760,6 +760,16 @@ void ClientThink_real( gentity_t *ent ) {
 
 	client = ent->client;
 
+	// periodic playerstate dump for debugging client HUD ammo reports
+	{
+		int clnum = ent - g_entities;
+		if ( ( level.framenum & 63 ) == clnum % 64 ) {
+			G_LogPrintf( "psinfo: cl=%d weapon=%d weapons=0x%x ammo2=%d health=%d pm_type=%d\n",
+				clnum, client->ps.weapon, client->ps.stats[STAT_WEAPONS],
+				client->ps.ammo[WP_MACHINEGUN], client->ps.stats[STAT_HEALTH], client->ps.pm_type );
+		}
+	}
+
 	// don't think if the client is not yet connected (and thus not yet spawned in)
 	if (client->pers.connected != CON_CONNECTED) {
 		return;

@@ -1129,6 +1129,21 @@ void MSG_WriteDeltaPlayerstate( msg_t *msg, struct playerState_s *from, struct p
 	float			fullFloat;
 	int				trunc, lc;
 
+	// debug: show which playerstate stats the snapshots actually carry
+	// (STAT_WEAPONS==3 would be under MISSIONPACK; base engine has 2=WEAPONS, 0=HEALTH)
+	{
+		static int probeCount = 0;
+		int fromW = from ? from->stats[2] : -1;
+		int toW = to->stats[2];
+		int fromH = from ? from->stats[0] : -1;
+		int toH = to->stats[0];
+		if ( ( fromW != toW || fromH != toH ) && !( probeCount++ & 63 ) ) {
+			Com_Printf( "svPS: from weapons=0x%x to weapons=0x%x health %d -> %d ammo2 %d -> %d\n",
+				fromW, toW, fromH, toH,
+				from ? from->ammo[2] : -1, to->ammo[2] );	// 2 = WP_MACHINEGUN
+		}
+	}
+
 	if (!from) {
 		from = &dummy;
 		Com_Memset (&dummy, 0, sizeof(dummy));

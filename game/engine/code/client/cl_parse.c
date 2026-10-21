@@ -279,6 +279,20 @@ void CL_ParseSnapshot( msg_t *msg ) {
 		MSG_ReadDeltaPlayerstate( msg, NULL, &newSnap.ps );
 	}
 
+	// debug: track our own playerstate weapon/ammo as decoded from snapshots
+	{
+		static int lastWeapon = -1, lastWeapons = -1, lastAmmo = -1;
+		if ( !( newSnap.snapFlags & SNAPFLAG_NOT_ACTIVE )
+			&& ( newSnap.ps.weapon != lastWeapon
+				|| newSnap.ps.stats[STAT_WEAPONS] != lastWeapons
+				|| newSnap.ps.ammo[WP_MACHINEGUN] != lastAmmo ) ) {
+			lastWeapon = newSnap.ps.weapon;
+			lastWeapons = newSnap.ps.stats[STAT_WEAPONS];
+			lastAmmo = newSnap.ps.ammo[WP_MACHINEGUN];
+			Com_Printf( "clPS: weapon=%d weapons=0x%x mg_ammo=%d\n", lastWeapon, lastWeapons, lastAmmo );
+		}
+	}
+
 	// read packet entities
 	SHOWNET( msg, "packet entities" );
 	CL_ParsePacketEntities( msg, old, &newSnap );

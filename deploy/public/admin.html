@@ -103,6 +103,28 @@
 </div>
 
 <div class="card">
+  <h2>Bots</h2>
+  <div class="row">
+    <select id="bot" style="max-width:130px"></select>
+    <select id="botSkill" title="difficulty">
+      <option value="1">1 · easy</option>
+      <option value="2">2 · below avg</option>
+      <option value="3" selected>3 · average</option>
+      <option value="4">4 · advanced</option>
+      <option value="5">5 · nightmare</option>
+    </select>
+    <button class="ghost" data-cmd="addbot %bot% %botSkill%">Add bot</button>
+    <button class="ghost" data-cmd="kick %bot%">Remove bot</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <input id="botFill" size="3" placeholder="0" title="number of players the server fills with bots (0 = off)">
+    <button class="ghost" data-cmd="bot_minplayers %botFill%">Auto-fill (bot_minplayers)</button>
+    <button class="ghost" data-cmd="kickbots">Kick all bots</button>
+  </div>
+  <span class="kv">remove matches the bot by name (<span style="font-family:monospace">kick sarge</span>) · auto-fill 0 = off</span>
+</div>
+
+<div class="card">
   <h2>Console (any rcon command)</h2>
   <div class="row">
     <input id="cmd" size="40" spellcheck="false" placeholder="cvarlist sv_…">
@@ -183,6 +205,18 @@ async function rcon(command) {
   } finally {
     busy = false;
   }
+}
+
+// --- bots (addbot/kick are game+engine commands; names = retail botfiles) ------
+
+const BOTS = ['sarge', 'major', 'grunt', 'visor', 'hunter', 'razor', 'bitterman',
+  'biker', 'mynx', 'slash', 'sorlag', 'klesk', 'lucy', 'tankjr', 'keel', 'orbb',
+  'uriel', 'xaero', 'anarki', 'bones', 'crash', 'doom', 'ranger'];
+for (const b of BOTS) {
+  const opt = document.createElement('option');
+  opt.value = b;
+  opt.textContent = b.charAt(0).toUpperCase() + b.slice(1);
+  $('bot').appendChild(opt);
 }
 
 // buttons with data-cmd, %token% replaced from same-id input

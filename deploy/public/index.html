@@ -15,6 +15,9 @@
   #login .field { display:flex; gap:8px; }
   #login input { background:#141414; border:1px solid #444; color:#eee; font:inherit;
     padding:10px 14px; width:min(260px, 60vw); border-radius:3px; outline-color:#d94a36; }
+  #login select { background:#141414; border:1px solid #444; color:#eee; font:inherit;
+    padding:10px 12px; flex:0 1 120px; min-width:0; border-radius:3px; }
+  #login select:disabled { opacity:.5; }
   #login button { background:#d94a36; border:0; color:#fff; font:inherit; padding:10px 22px;
     cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
   #login button:disabled { background:#552; color:#996; cursor:default; }
@@ -41,6 +44,7 @@
   <h1>Quake III Arena</h1>
   <div class="field">
     <input id="name" maxlength="16" placeholder="Player name" autocomplete="off" spellcheck="false">
+    <select id="model" title="Character"></select>
     <button id="playBtn">Play</button>
   </div>
   <div class="hint">name is remembered · pk3 downloads are cached <a id="clearCache" href="#">(clear)</a> · <a href="admin.html">server admin</a></div>
@@ -107,17 +111,20 @@ const fsBtn = document.getElementById('fsBtn');
 const logBtn = document.getElementById('logBtn');
 logBtn.addEventListener('click', () => logBox.classList.toggle('show'));
 
-function screenElement() {
-  const el = document.documentElement;
-  return el.fullscreenElement !== undefined ? el : el.webkitFullscreenElement !== undefined ? el : null;
+function fullscreenElementOk() {
+  // requestFullscreen lives on the element; fullscreenElement lives on
+  // `document` (not documentElement). Use webkitRequestFullscreen as fallback.
+  const root = document.documentElement;
+  return !!(root.requestFullscreen || root.webkitRequestFullscreen) ? root : null;
 }
 
 fsBtn.addEventListener('click', () => {
-  const el = screenElement();
+  const el = fullscreenElementOk();
   if (!el) { logLine('this browser does not support fullscreen'); return; }
   const active = document.fullscreenElement || document.webkitFullscreenElement;
   if (active) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-  else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+  else if (el.requestFullscreen) el.requestFullscreen();
+  else el.webkitRequestFullscreen();
 });
 
 const syncFullscreenLabel = () => {
@@ -153,6 +160,22 @@ function fail(msg) {
 const nameKey = 'q3.playerName';
 const savedName = localStorage.getItem(nameKey) || '';
 nameInput.value = params.get('name') || savedName || '';
+
+// Character selector: every player model in retail pak0. Persisted like the
+// name and applied with `+set model` before connecting.
+const models = ['sarge', 'major', 'grunt', 'visor', 'hunter', 'razor', 'bitterman',
+  'biker', 'mynx', 'slash', 'sorlag', 'klesk', 'lucy', 'tankjr', 'keel', 'orbb',
+  'uriel', 'xaero', 'anarki', 'bones', 'crash', 'doom', 'ranger'];
+const modelKey = 'q3.playerModel';
+const modelInput = document.getElementById('model');
+for (const m of models) {
+  const opt = document.createElement('option');
+  opt.value = m;
+  opt.textContent = m.charAt(0).toUpperCase() + m.slice(1);
+  modelInput.appendChild(opt);
+}
+const savedModel = localStorage.getItem(modelKey);
+if (savedModel && models.includes(savedModel)) modelInput.value = savedModel;
 
 // WebSocket gateway URL. The Emscripten UDP socket layer talks to it with one
 // binary frame per Quake 3 datagram.
@@ -329,20 +352,23 @@ function cacheDoneMb(progress) {
 async function start() {
   const playerName = (nameInput.value.trim().replace(/[^\w\- ]/g, '').slice(0, 16)) || 'Player';
   localStorage.setItem(nameKey, playerName);
+  const playerModel = modelInput.value || 'sarge';
+  localStorage.setItem(modelKey, playerModel);
   playBtn.disabled = true;
   nameInput.disabled = true;
+  modelInput.disabled = true;
 
   document.getElementById('login').style.display = 'none';
   document.getElementById('bootNew').style.display = '';
 
   try {
-    await loadGame(playerName);
+    await loadGame(playerName, playerModel);
   } catch (e) {
     fail(String(e && e.message || e));
   }
 }
 
-async function loadGame(playerName) {
+async function loadGame(playerName, playerModel) {
   say(`preparing ${gameId} data…`);
   barBox.style.display = 'block';
 
@@ -400,6 +426,7 @@ async function loadGame(playerName) {
       '+set', 'sv_pure', '0',
       '+set', 'com_basegame', gameId,
       '+set', 'name', playerName,
+      '+set', 'model', playerModel,
       '+connect', connectAddress,
     ],
     locateFile: (file) => new URL(file, location.href).href,
