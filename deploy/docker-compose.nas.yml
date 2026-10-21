@@ -24,6 +24,9 @@ services:
       Q3JS_PUBLISH_PORT: "443"
       Q3JS_SECURE: "true"
       MAX_CONNECTIONS: "64"
+      # opt-in Cloudflare caching for /assets/ paks — only when the site is public
+      # or behind Cloudflare Access, never with a password in the NAS Caddy
+      PAK_CACHE_CONTROL: "${PAK_CACHE_CONTROL:-no-cache}"
     volumes:
       # pak0.pk3..pak8.pk3 in ./quake3-data/baseq3/ (writable: zz-cgame.pk3)
       - ./quake3-data:/data

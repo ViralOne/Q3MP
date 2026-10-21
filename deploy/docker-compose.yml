@@ -60,6 +60,8 @@ services:
     environment:
       # Caddyfile site address; without it Caddy only serves localhost
       DOMAIN: "${DOMAIN:-localhost}"
+      # opt-in edge caching for /assets/ paks (see Caddyfile); default no-cache
+      PAK_CACHE_CONTROL: "${PAK_CACHE_CONTROL:-no-cache}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./public:/srv/web:ro

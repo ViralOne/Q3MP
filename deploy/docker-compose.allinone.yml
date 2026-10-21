@@ -25,6 +25,8 @@ services:
       Q3JS_PUBLISH_PORT: "${Q3JS_PUBLISH_PORT:-443}"
       Q3JS_SECURE: "${Q3JS_SECURE:-true}"
       MAX_CONNECTIONS: "64"
+      # opt-in edge caching for /assets/ paks (see Caddyfile); default no-cache
+      PAK_CACHE_CONTROL: "${PAK_CACHE_CONTROL:-no-cache}"
     volumes:
       # Your legally obtained pak0.pk3..pak8.pk3 go in ./quake3-data/baseq3/
       # (writable: the server publishes zz-cgame.pk3 there for the browsers)

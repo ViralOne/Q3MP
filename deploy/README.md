@@ -208,6 +208,34 @@ frags show up within seconds. Players are keyed by name (color codes
 stripped); bots are hidden unless *include bots* is ticked. To reset the
 stats, delete `games.log` from the server-state volume.
 
+## Cloudflare caching for PK3 downloads
+
+Every new browser downloads ~530 MB of paks once. Behind Cloudflare these can
+come from Cloudflare's edge instead of your upload link — **but a cached pak
+is served to anyone who asks**, without passing through your server. So it is
+opt-in, and only safe when the site is public or gated *at Cloudflare* with
+**Cloudflare Access** (Zero Trust → Access → Applications; free for small
+teams). With a password in your own Caddy (`basic_auth`) behind Cloudflare,
+leave it off: Cloudflare caches authenticated responses marked `public` and
+would hand the paks to people without the password.
+
+To enable it:
+
+1. Set `PAK_CACHE_CONTROL="public, max-age=0, s-maxage=86400"` in the
+   compose environment / `.env` and recreate the container. Paks under
+   `/assets/` then tell shared caches to keep them for a day; browsers still
+   revalidate. `zz-*.pk3` (rebuilt or generated in place) stay `no-cache`.
+2. In Cloudflare: *Caching → Cache Rules → Create rule* — when *URI Path*
+   *starts with* `/assets/`, set *Cache eligibility: Eligible for cache*,
+   *Edge TTL: Use cache-control header if present*. (`.pk3` is not in
+   Cloudflare's default cached extensions, so without this rule nothing is
+   cached.) The free plan caches files up to 512 MB, which covers `pak0.pk3`.
+3. Check with `curl -sI https://<host>/assets/baseq3/pak1.pk3 | grep -i cf-cache-status`
+   twice: `MISS`, then `HIT`.
+
+After replacing a pak under the same name, purge it (*Caching → Configuration
+→ Purge by URL*) or wait a day.
+
 ## Player-facing URLs
 
 | URL | Description |

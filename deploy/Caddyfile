@@ -32,6 +32,21 @@
 		reverse_proxy gateway:8080
 	}
 
+	# PK3 downloads. Edge caching (Cloudflare + a Cache Rule for /assets/) is
+	# opt-in through PAK_CACHE_CONTROL, e.g. "public, max-age=0, s-maxage=86400":
+	# a cached pak is served to anyone, so only enable it when the site is
+	# public or gated at the edge (Cloudflare Access) — never behind a
+	# password checked here or in a proxy after Cloudflare. Browsers always
+	# revalidate (the launcher keeps its own OPFS copy and checks the ETag).
+	# zz-*.pk3 are small and change in place, so they are never edge-cached.
+	@zzpak path_regexp ^/assets/[^/]+/zz-[^/]*\.pk3$
+	header @zzpak Cache-Control "no-cache"
+	@pak {
+		path /assets/*
+		not path_regexp ^/assets/[^/]+/zz-[^/]*\.pk3$
+	}
+	header @pak Cache-Control "{$PAK_CACHE_CONTROL:no-cache}"
+
 	handle_path /assets/* {
 		root * /srv/data
 		file_server
