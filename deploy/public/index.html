@@ -202,9 +202,10 @@ const dataBase = params.get('data') || '/assets/';
 const gameId = (params.get('game') || 'baseq3').replace(/[^\w]/g, '') || 'baseq3';
 
 // Asset list: retail pak0..pak8 (the official 1.32 point release carries the
-// VMs in pak7/pak8) or the demo pack plus server maps.
+// VMs in pak7/pak8) plus the server's client-side cgame patch, or the demo
+// pack plus server maps.
 const files = gameId === 'baseq3'
-  ? Array.from({ length: 9 }, (_, i) => `baseq3/pak${i}.pk3`)
+  ? [...Array.from({ length: 9 }, (_, i) => `baseq3/pak${i}.pk3`), 'baseq3/zz-cgame.pk3']
   : [`demoq3/pak0.pk3`,
      `demoq3/map_oxodm1.pk3`, `demoq3/map_oxodm6.pk3`, `demoq3/padcrash.pk3`];
 

@@ -17,7 +17,7 @@ RUN cmake -S /src/engine -B . -G Ninja \
       -DUSE_VOIP=OFF \
   && cmake --build . --parallel "$(nproc)"
 
-# Package the compiled QVMs (cgame/qagame/ui) as a small pk3. Quake 3 refuses
+# Package the compiled QVMs (cgame/qagame/ui) as small pk3s. Quake 3 refuses
 # archive entries whose timestamps look like they were written in the future,
 # so clamp them to a stable epoch first.
 #
@@ -31,7 +31,8 @@ RUN mkdir -p /stage/vm \
   && cd /stage \
   && touch -t 200001010000 vm/*.qvm \
   && zip -q -9 -X /zz-webvm.pk3 vm/cgame.qvm vm/qagame.qvm vm/ui.qvm \
-  && zip -q -9 -X /zz-scorekeep.pk3 vm/qagame.qvm
+  && zip -q -9 -X /zz-scorekeep.pk3 vm/qagame.qvm \
+  && zip -q -9 -X /zz-cgame.pk3 vm/cgame.qvm
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends libcurl4 && rm -rf /var/lib/apt/lists/*
@@ -40,9 +41,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends libcurl4 && rm 
 COPY --from=build /src/build/Release/ioq3ded /usr/local/bin/ioq3ded
 COPY --from=build /zz-webvm.pk3 /opt/baseq3-extra/zz-webvm.pk3
 # zz-scorekeep contains ONLY qagame.qvm: the game module with reconnect-score
-# preservation. Server-side only — clients keep the vanilla cgame/ui from the
-# official paks (the fork's ui.qvm needs menu data files we cannot ship).
+# preservation, running server-side.
 COPY --from=build /zz-scorekeep.pk3 /opt/baseq3-extra/zz-scorekeep.pk3
+# zz-cgame contains ONLY cgame.qvm: published to the browser clients so they
+# pick up fork-side client fixes (e.g. wheel weapon cycling). The fork's
+# ui.qvm stays out — it needs menu data files we cannot ship (menus.txt).
+COPY --from=build /zz-cgame.pk3 /opt/baseq3-extra/zz-cgame.pk3
 COPY deploy/server/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY deploy/server/defaults/baseq3.cfg deploy/server/defaults/demoq3.cfg /defaults/
 RUN chmod +x /usr/local/bin/entrypoint.sh

@@ -7,6 +7,9 @@ services:
     volumes:
       # Your legally obtained pak0.pk3..pak8.pk3 go in ./quake3-data/baseq3/
       - ./quake3-data:/data:ro
+      # Same directory, writable: the server publishes the client cgame pk3
+      # (zz-cgame) that the web server then serves under /assets/.
+      - ./quake3-data:/out
       - server-state:/state
     # Retail content by default; switch to demo with FS_BASEGAME: "demoq3".
     # VMs come from the official pak7/pak8 point-release QVMs.

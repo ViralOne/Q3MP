@@ -37,6 +37,13 @@ done
 # one must never survive a container recreate.
 if [ "$BASEGAME" != "demoq3" ]; then
   cp -f /opt/baseq3-extra/zz-scorekeep.pk3 "$FS_BASEPATH/$BASEGAME/zz-scorekeep.pk3"
+  cp -f /opt/baseq3-extra/zz-cgame.pk3 "$FS_BASEPATH/$BASEGAME/zz-cgame.pk3"
+  # publish the client cgame for the browsers: /out is the same host directory
+  # the web server serves under /assets/ (compose binds ./quake3-data there).
+  if [ -d /out ]; then
+    mkdir -p "/out/$BASEGAME"
+    cp -f /opt/baseq3-extra/zz-cgame.pk3 "/out/$BASEGAME/zz-cgame.pk3"
+  fi
 fi
 
 # Server config: user-provided file contents or the bundled default for this

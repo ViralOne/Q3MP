@@ -1538,6 +1538,19 @@ static qboolean CG_WeaponSelectable( int i ) {
 
 /*
 ===============
+CG_WeaponInInventory
+
+_owned_ weapon, even with no ammo left — used for mouse-wheel cycling so the
+wheel takes one step per owned weapon slot (empty guns still switchable, like
+the number keys; they just can't fire).
+===============
+*/
+static qboolean CG_WeaponInInventory( int i ) {
+	return ( qboolean )( ( cg.snap->ps.stats[ STAT_WEAPONS ] & ( 1 << i ) ) != 0 );
+}
+
+/*
+===============
 CG_NextWeapon_f
 ===============
 */
@@ -1560,10 +1573,7 @@ void CG_NextWeapon_f( void ) {
 		if ( cg.weaponSelect == MAX_WEAPONS ) {
 			cg.weaponSelect = 0;
 		}
-		if ( cg.weaponSelect == WP_GAUNTLET ) {
-			continue;		// never cycle to gauntlet
-		}
-		if ( CG_WeaponSelectable( cg.weaponSelect ) ) {
+		if ( CG_WeaponInInventory( cg.weaponSelect ) ) {
 			break;
 		}
 	}
@@ -1596,10 +1606,7 @@ void CG_PrevWeapon_f( void ) {
 		if ( cg.weaponSelect == -1 ) {
 			cg.weaponSelect = MAX_WEAPONS - 1;
 		}
-		if ( cg.weaponSelect == WP_GAUNTLET ) {
-			continue;		// never cycle to gauntlet
-		}
-		if ( CG_WeaponSelectable( cg.weaponSelect ) ) {
+		if ( CG_WeaponInInventory( cg.weaponSelect ) ) {
 			break;
 		}
 	}
