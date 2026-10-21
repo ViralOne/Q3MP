@@ -23,6 +23,8 @@ import { timingSafeEqual } from "node:crypto";
 import { readdirSync, openSync, readSync, fstatSync, closeSync } from "node:fs";
 import { WebSocketServer } from "ws";
 
+import { startMasterHeartbeat } from "./master-heartbeat.mjs";
+
 const env = (name, fallback) => process.env[name] || fallback;
 const num = (name, fallback) => {
   const v = Number.parseInt(process.env[name] ?? "", 10);
@@ -370,6 +372,7 @@ httpServer.listen(options.gatewayPort, options.gatewayHost, () => {
     `[gateway] listening http://${options.gatewayHost}:${options.gatewayPort}` +
       ` -> udp://${options.targetHost}:${options.targetPort}`,
   );
+  startMasterHeartbeat((line) => console.log(`[heartbeat] ${line}`));
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

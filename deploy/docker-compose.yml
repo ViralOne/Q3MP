@@ -35,6 +35,12 @@ services:
       MAX_CONNECTIONS: "64"
       # Validated against incoming /admin/api requests; must match the server.
       RCON_PASSWORD: "${RCON_PASSWORD:-q3admin}"
+      # List this server on q3js.com (community servers). Needs a public
+      # domain with real TLS — set Q3JS_PUBLISH_HOST to it (see README).
+      Q3JS_MASTER_URL: "${Q3JS_MASTER_URL:-https://master.q3js.com}"
+      Q3JS_PUBLISH_HOST: "${Q3JS_PUBLISH_HOST:-}"
+      Q3JS_PUBLISH_PORT: "${Q3JS_PUBLISH_PORT:-443}"
+      Q3JS_SECURE: "${Q3JS_SECURE:-true}"
     volumes:
       # Read-only access to the paks, to extract the list of loadable maps
       # for /admin.html (names only, straight from the zip directories).

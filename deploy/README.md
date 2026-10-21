@@ -227,6 +227,48 @@ cmake --build game/build/client --parallel
 cp game/build/client/Release/ioquake3.{js,wasm} deploy/public/
 ```
 
+## Listing on q3js.com (community server)
+
+q3js.com's live server list is fed by heartbeats to its master
+(`master.q3js.com`). Once your stack runs on a **public domain with real TLS**,
+opt in by setting an environment variable before `docker compose up`:
+
+```sh
+Q3JS_PUBLISH_HOST=quake.example.com docker compose up -d
+```
+
+The gateway then sends the same anonymous heartbeat as the packaged q3js
+server (`PUT /api/servers/heartbeat`, every 5 s) announcing:
+
+- `wss://quake.example.com:443/ws` — where browser players connect (Caddy
+  already routes `/ws` to the gateway, so no extra ports are needed)
+- `udp://quake.example.com:27960` — for native ioquake3 players
+
+The master validates reachability by opening the `/ws` WebSocket and querying
+the game status through it; a validated server appears in
+[the browser list](https://q3js.com/#servers), and stops sending heartbeats to
+be pruned after ~5 minutes.
+
+Related variables (all optional):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `Q3JS_MASTER_URL` | `https://master.q3js.com` | registry to send heartbeats to |
+| `Q3JS_PUBLISH_HOST` | *(unset = disabled)* | public hostname to announce |
+| `Q3JS_PUBLISH_PORT` | `443` | public ws port (Caddy TLS) |
+| `Q3JS_SECURE` | `true` | players reach `/ws` over `wss://` |
+| `Q3JS_TARGET_PORT` | `27960` | public UDP port for native players |
+
+Notes:
+
+- `localhost`/private hostnames are refused on purpose — the master has to be
+  able to connect back, so a self-signed local deployment cannot be listed.
+- Players joining from q3js.com run the upstream q3js client with
+  q3js.com-hosted assets against this server; nothing extra is required on
+  their side (server runs `sv_pure 0`).
+- No heartbeat for a private network — just leave `Q3JS_PUBLISH_HOST` unset
+  and the gateway stays unlisted.
+
 ## Smoke test (already verified on this Mac)
 
 ```sh
