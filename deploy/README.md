@@ -233,6 +233,8 @@ emcmake cmake -S game/engine -B game/build/client -G Ninja \
   -DBUILD_RENDERER_GL1=OFF -DBUILD_RENDERER_GL2=ON \
   -DUSE_RENDERER_DLOPEN=OFF -DUSE_OPENAL=OFF -DUSE_VOIP=OFF
 cmake --build game/build/client --parallel
+game/apply-emsdk-sdl-patch.sh   # emsdk SDL2 port: audio divide-by-zero guard
+./game/build-client.sh          # (or: make client)
 cp game/build/client/Release/ioquake3.{js,wasm} deploy/public/
 ```
 

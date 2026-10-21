@@ -23,6 +23,11 @@ require_command pnpm
 
 echo "Building the Q3JS client with $(emcc --version | head -n 1)"
 
+# The emsdk SDL2 port's audio callback chain traps on closed-device audio
+# (wasm "integer divide by zero" after a failed remote connect); apply our
+# cached-port patch before linking.
+"$SCRIPT_DIR/apply-emsdk-sdl-patch.sh"
+
 emcmake cmake \
   -S "$ENGINE_DIR" \
   -B "$BUILD_DIR" \
