@@ -33,6 +33,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../client/client.h"
 #include "../sys/sys_local.h"
 
+#ifdef __EMSCRIPTEN__
+#	include <emscripten/html5.h>
+#endif
+
 #if !SDL_VERSION_ATLEAST(2, 0, 17)
 #define KMOD_SCROLL KMOD_RESERVED
 #endif
@@ -52,6 +56,16 @@ static cvar_t *in_joystick          = NULL;
 static cvar_t *in_joystickThreshold = NULL;
 static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
+
+#ifdef __EMSCRIPTEN__
+// Web wheel bypass: the Emscripten SDL2 port keeps a float accumulator and
+// only emits an integer SDL_MOUSEWHEEL when it crosses +/-1, so a single
+// ratchet notch is usually split into several y = 0 events. We read the raw
+// DOM wheel deltas ourselves instead (see IN_WebWheel / IN_Init).
+static cvar_t *in_wheelPx = NULL;    // DOM wheel pixels per MWHEELUP/DOWN tap
+static double in_wheelAccum = 0.0;
+static qboolean in_wheelRegistered = qfalse;
+#endif
 
 static int vidRestartTime = 0;
 
@@ -1140,8 +1154,11 @@ static void IN_ProcessEvents( void )
 				break;
 
 			case SDL_MOUSEWHEEL:
-				// debug: every raw wheel event as the browser delivers it
-				Com_Printf( "clwheel: y=%d\n", e.wheel.y );
+#ifdef __EMSCRIPTEN__
+				// raw wheel handling is done in IN_WebWheel; the SDL2 port's
+				// normalized events here would double-tap the binds
+				break;
+#else
 				if( e.wheel.y > 0 )
 				{
 					Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELUP, qtrue, 0, NULL );
@@ -1152,6 +1169,7 @@ static void IN_ProcessEvents( void )
 					Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELDOWN, qtrue, 0, NULL );
 					Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELDOWN, qfalse, 0, NULL );
 				}
+#endif
 				break;
 
 			case SDL_CONTROLLERDEVICEADDED:
@@ -1283,6 +1301,63 @@ void IN_Frame( void )
 
 /*
 ===============
+IN_WebWheel
+
+Web only. Called with every raw DOM wheel event. Converts deltas to pixels,
+accumulates them, and queues one MWHEELUP/DOWN key tap per in_wheelPx pixels.
+Browser semantics: positive deltaY scrolls DOWN, i.e. MWHEELDOWN.
+===============
+*/
+#ifdef __EMSCRIPTEN__
+static EM_BOOL IN_WebWheel( int eventType, const EmscriptenWheelEvent *wheelEvent, void *userData )
+{
+	double y = wheelEvent->deltaY;
+	double px;
+
+	if ( !in_wheelPx ) {
+		return EM_FALSE;
+	}
+
+	switch ( wheelEvent->deltaMode ) {
+	case DOM_DELTA_LINE:
+		y *= 20.0;               // ~20px per line
+		break;
+	case DOM_DELTA_PAGE:
+		y *= 1000.0;             // a page is far more than a notch
+		break;
+	default:                     // DOM_DELTA_PIXEL
+		break;
+	}
+
+	in_wheelAccum += y;
+
+	px = in_wheelPx->value;
+	if ( px <= 0.0 ) {
+		return EM_FALSE;
+	}
+
+	while ( in_wheelAccum >= px ) {
+		in_wheelAccum -= px;
+		Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELDOWN, qtrue, 0, NULL );
+		Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELDOWN, qfalse, 0, NULL );
+	}
+	while ( in_wheelAccum <= -px ) {
+		in_wheelAccum += px;
+		Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELUP, qtrue, 0, NULL );
+		Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELUP, qfalse, 0, NULL );
+	}
+
+	// debug: raw wheel deltas as the browser delivers them + accumulator state
+	Com_Printf( "htmlwheel: dy=%.2f mode=%d acc=%.2f\n", wheelEvent->deltaY,
+		wheelEvent->deltaMode, in_wheelAccum );
+
+	return EM_FALSE;
+}
+
+#endif // __EMSCRIPTEN__
+
+/*
+===============
 IN_Init
 ===============
 */
@@ -1308,6 +1383,20 @@ void IN_Init( void *windowData )
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
+
+#ifdef __EMSCRIPTEN__
+	// raw wheel handling: see IN_WebWheel. 14px ≈ one ratchet notch at the
+	// typical browser mouse-wheel granularity; tune with /in_wheelPx.
+	in_wheelPx = Cvar_Get( "in_wheelPx", "14", CVAR_ARCHIVE );
+	if ( !in_wheelRegistered ) {
+		if ( emscripten_set_wheel_callback( EMSCRIPTEN_EVENT_TARGET_WINDOW,
+				NULL, EM_TRUE, IN_WebWheel ) == EMSCRIPTEN_RESULT_SUCCESS ) {
+			in_wheelRegistered = qtrue;
+		} else {
+			Com_Printf( "IN_Init: could not register the DOM wheel handler\n" );
+		}
+	}
+#endif
 
 #if defined(PROTOCOL_HANDLER) && defined(__APPLE__)
 	SDL_EventState( SDL_DROPFILE, SDL_ENABLE );
