@@ -1,0 +1,11 @@
+{
+  "name": "q3-web-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WebSocket-to-UDP gateway for ioquake3 WebAssembly clients",
+  "license": "GPL-2.0-only",
+  "dependencies": {
+    "ws": "8.18.0"
+  }
+}

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quake III Arena — Web</title>
+<style>
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000;
+    font-family: "SF Mono", Menlo, Consolas, monospace; color:#ddd; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:none; }
+  .panel { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:16px; background:#000; z-index:5; }
+  .panel h1 { font-size:26px; font-weight:700; letter-spacing:2px; color:#d94a36; margin:0;
+    text-transform:uppercase; }
+  #login .field { display:flex; gap:8px; }
+  #login input { background:#141414; border:1px solid #444; color:#eee; font:inherit;
+    padding:10px 14px; width:min(260px, 60vw); border-radius:3px; outline-color:#d94a36; }
+  #login button { background:#d94a36; border:0; color:#fff; font:inherit; padding:10px 22px;
+    cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
+  #login button:disabled { background:#552; color:#996; cursor:default; }
+  #login .hint { font-size:11px; color:#666; }
+  #login a { color:#878; }
+  #bar { width:min(420px, 70vw); height:8px; background:#222; border:1px solid #333; display:none; }
+  #bar i { display:block; height:100%; width:0%; background:#d94a36; transition:width .15s; }
+  #status { font-size:12px; color:#999; min-height:18px; }
+  #log { position:absolute; left:8px; bottom:8px; right:8px; max-height:40vh; overflow:auto;
+    font-size:11px; line-height:1.5; color:#7c6; background:rgba(0,0,0,.82); border:1px solid #244;
+    padding:8px 10px; z-index:9; white-space:pre-wrap; display:none; }
+  #log.show { display:block; }
+  #error { color:#d94a36; font-size:12px; white-space:pre-wrap; max-width:80vw; text-align:center; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="panel" id="login">
+  <h1>Quake III Arena</h1>
+  <div class="field">
+    <input id="name" maxlength="16" placeholder="Player name" autocomplete="off" spellcheck="false">
+    <button id="playBtn">Play</button>
+  </div>
+  <div class="hint">name is remembered · pk3 downloads are cached <a id="clearCache" href="#">(clear)</a> · <a href="admin.html">server admin</a></div>
+</div>
+<div class="panel" id="bootNew" style="display:none">
+  <div id="bar"><i></i></div>
+  <div id="status">loading…</div>
+  <div id="error"></div>
+</div>
+<div id="log"></div>
+
+<script>
+// Surface module script failures on screen instead of silently dead buttons.
+window.addEventListener('error', (e) => {
+  const panel = document.getElementById('bootNew');
+  const error = document.getElementById('error');
+  if (panel && error) {
+    document.getElementById('login').style.display = 'none';
+    panel.style.display = '';
+    error.textContent = 'script error: ' + (e.message || e.type || 'unknown');
+  }
+});
+</script>
+
+<script type="module">
+const params = new URLSearchParams(location.search);
+const statusEl = document.getElementById('status');
+const barEl = document.querySelector('#bar i');
+const barBox = document.getElementById('bar');
+const errorBox = document.getElementById('error');
+const logBox = document.getElementById('log');
+const nameInput = document.getElementById('name');
+const playBtn = document.getElementById('playBtn');
+
+// ---------------------------------------------------------------- console log
+const logLines = [];
+function logLine(line) {
+  logLines.push(line);
+  if (logLines.length > 400) logLines.splice(0, logLines.length - 400);
+  logBox.textContent = logLines.join('\n');
+  logBox.scrollTop = logBox.scrollHeight;
+}
+// ~ opens the ENGINE console (drawn inside the canvas). This browser-side log
+// overlay toggles separately via the "logs" button or F1, which the engine
+// ignores, so the two consoles stay independent.
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'F1' && !e.repeat) {
+    logBox.classList.toggle('show');
+  }
+}, true);
+
+const realError = console.error;
+console.error = (...a) => { realError(...a); logLine(a.map(String).join(' ')); };
+logBox.classList.add('show');
+
+function say(msg) { statusEl.textContent = msg; logLine(msg); }
+function fail(msg) {
+  errorBox.textContent = msg;
+  console.error(msg);
+  document.getElementById('bootNew').style.display = '';
+  logBox.classList.add('show');
+}
+
+// ---------------------------------------------------------------- settings
+
+const nameKey = 'q3.playerName';
+const savedName = localStorage.getItem(nameKey) || '';
+nameInput.value = params.get('name') || savedName || '';
+
+// WebSocket gateway URL. The Emscripten UDP socket layer talks to it with one
+// binary frame per Quake 3 datagram.
+const gatewayUrl = params.get('server') ||
+  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+
+// Quake connect address (display + net stamping only; traffic flows over the ws
+// gateway). Defaults to this host on the standard Q3 port.
+const connectAddress = params.get('connect') || `${location.hostname}:27960`;
+
+// Where PK3 files live (served by the same site under /assets/...).
+const dataBase = params.get('data') || '/assets/';
+
+// Game directory: baseq3 (retail paks, default) or demoq3 (free demo pack,
+// via ?game=demoq3).
+const gameId = (params.get('game') || 'baseq3').replace(/[^\w]/g, '') || 'baseq3';
+
+// Asset list: retail pak0..pak8 (the official 1.32 point release carries the
+// VMs in pak7/pak8) or the demo pack plus server maps.
+const files = gameId === 'baseq3'
+  ? Array.from({ length: 9 }, (_, i) => `baseq3/pak${i}.pk3`)
+  : [`demoq3/pak0.pk3`,
+     `demoq3/map_oxodm1.pk3`, `demoq3/map_oxodm6.pk3`, `demoq3/padcrash.pk3`];
+
+function dirOf(rel) { return `/${rel.split('/')[0]}`; }
+function baseOf(rel) { return rel.match(/[^/]+$/)[0]; }
+
+playBtn.addEventListener('click', start);
+nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') start(); });
+
+// ?name= in the URL auto-starts (shareable "join as X" links, and testing).
+if (params.get('name')) start();
+
+// ---------------------------------------------------------------- opfs cache
+// Persistent per-origin file cache: PK3s are downloaded once and survive
+// reloads and restarts. Metadata (etag per file) lives in a small JSON so a
+// changed pak on the server re-downloads automatically.
+
+async function getCacheRoot() {
+  if (!navigator.storage?.getDirectory) return null;
+  return navigator.storage.getDirectory().catch(() => null);
+}
+
+async function loadMeta(root) {
+  try {
+    const f = await (await root.getFileHandle('meta.json')).getFile();
+    return JSON.parse(await f.text() || '{}');
+  } catch {
+    return {};
+  }
+}
+
+async function saveMeta(root, meta) {
+  try {
+    const w = await (await root.getFileHandle('meta.json', { create: true })).createWritable();
+    await w.write(JSON.stringify(meta));
+    await w.close();
+  } catch {
+    // metadata is an optimization, not a requirement
+  }
+}
+
+async function clearCache() {
+  const root = await getCacheRoot();
+  if (!root) { say('no persistent cache in this browser'); return; }
+  for (const d of ['baseq3', 'demoq3']) {
+    await root.removeEntry(d, { recursive: true }).catch(() => {});
+  }
+  await root.removeEntry('meta.json').catch(() => {});
+  say('cached downloads cleared (will re-download next play)');
+}
+
+document.getElementById('clearCache').addEventListener('click', (e) => {
+  e.preventDefault();
+  clearCache();
+});
+
+// Make sure the browser does not evict ~500 MB of paks under pressure.
+navigator.storage?.persist?.().then((ok) => {
+  if (!ok) logLine('note: storage not marked persistent (browser may evict cache)');
+});
+
+// Download (or restore from OPFS) one asset. `progress` collects
+// {received,total} entries so the bar reflects real byte counts.
+async function acquire(root, meta, rel, progress) {
+  const url = new URL(rel, new URL(dataBase, location.href));
+  const entry = { rel, name: baseOf(rel), dir: dirOf(rel), received: 0, total: 0, fromCache: false, handle: null, buf: null };
+
+  // freshness probe (a few hundred bytes) — also gives a size for the progress bar
+  let etag = null;
+  try {
+    const head = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+    if (head.ok) {
+      etag = head.headers.get('etag');
+      entry.total = +head.headers.get('content-length') || entry.total;
+    }
+  } catch { /* offline: fall through, cache is still usable */ }
+
+  let opfsDir = null;
+  if (root) {
+    opfsDir = await root.getDirectoryHandle(rel.split('/')[0], { create: true }).catch(() => null);
+  }
+
+  const cached = meta[rel];
+  if (opfsDir && cached) {
+    try {
+      const handle = await opfsDir.getFileHandle(entry.name);
+      // a new etag means the pak changed on the server; otherwise trust the copy
+      if (cached.etag === etag || (etag === null && (!entry.total || cached.size === entry.total))) {
+        const size = (await handle.getFile()).size;
+        entry.handle = handle;
+        entry.received = entry.total = size;
+        entry.fromCache = true;
+        progress.push(entry);
+        return entry;
+      }
+    } catch {
+      // no cached copy after all
+    }
+  }
+
+  const response = await fetch(url, { cache: 'default' });
+  if (!response.ok) throw new Error(`${rel}: HTTP ${response.status}`);
+  entry.total = +response.headers.get('content-length') || entry.total;
+
+  let wrote = false;
+  if (opfsDir && response.body && opfsDir.getFileHandle && opfsDir) {
+    try {
+      const handle = await opfsDir.getFileHandle(entry.name, { create: true });
+      const writable = await handle.createWritable();
+      const reader = response.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await writable.write(value);
+        entry.received += value.byteLength;
+        updateBar(progress);
+      }
+      await writable.close();
+      entry.handle = handle;
+      meta[rel] = { etag, size: entry.received };
+      wrote = true;
+    } catch (e) {
+      console.error(`cache write failed for ${rel}: ${e && e.message || e}`);
+    }
+  }
+
+  if (!wrote) {
+    const data = await response.arrayBuffer();
+    entry.buf = data;
+    entry.received = data.byteLength;
+    if (!entry.total) entry.total = data.byteLength;
+  }
+
+  progress.push(entry);
+  updateBar(progress);
+  return entry;
+}
+
+function updateBar(progress) {
+  let got = 0, all = 0;
+  for (const p of progress) { got += p.received; all += p.total; }
+  if (all) barEl.style.width = Math.min(100, (got / all) * 100) + '%';
+}
+
+function cacheDoneMb(progress) {
+  let got = 0;
+  for (const p of progress) got += p.received;
+  return (got / 1048576).toFixed(0);
+}
+
+// ---------------------------------------------------------------- start flow
+
+async function start() {
+  const playerName = (nameInput.value.trim().replace(/[^\w\- ]/g, '').slice(0, 16)) || 'Player';
+  localStorage.setItem(nameKey, playerName);
+  playBtn.disabled = true;
+  nameInput.disabled = true;
+
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('bootNew').style.display = '';
+
+  try {
+    await loadGame(playerName);
+  } catch (e) {
+    fail(String(e && e.message || e));
+  }
+}
+
+async function loadGame(playerName) {
+  say(`preparing ${gameId} data…`);
+  barBox.style.display = 'block';
+
+  const results = [];
+  try {
+    const root = await getCacheRoot();
+    if (root) {
+      const meta = await loadMeta(root);
+      const progress = [];
+      for (const rel of files) {
+        try {
+          const entry = await acquire(root, meta, rel, progress);
+          results.push(entry);
+          if (entry.fromCache) say(`${rel}: cached`);
+          else if (entry.handle) say(`${rel}: downloaded ${cacheDoneMb(progress)} MB`);
+        } catch (e) {
+          console.error('skipping asset: ' + (e && e.message || e));
+        }
+      }
+      await saveMeta(root, meta);
+    }
+  } catch (e) {
+    console.error('persistent cache unavailable: ' + (e && e.message || e));
+  }
+
+  if (!results.length) {
+    // last-ditch plain fetch, no cache
+    for (const rel of files) {
+      try {
+        const response = await fetch(new URL(rel, new URL(dataBase, location.href)), { cache: 'force-cache' });
+        if (!response.ok) throw new Error(`${rel}: HTTP ${response.status}`);
+        const data = await response.arrayBuffer();
+        results.push({ rel, name: baseOf(rel), dir: dirOf(rel), buf: data, handle: null, received: data.byteLength, total: data.byteLength });
+        say(`got ${rel} (${(data.byteLength / 1048576).toFixed(0)} MB)`);
+      } catch (e) {
+        console.error('skipping asset: ' + (e && e.message || e));
+      }
+    }
+  }
+  if (!results.length) {
+    throw new Error(`No PK3 files found under ${dataBase}${gameId}/ - game data missing`);
+  }
+  say(`assets ready (${cacheDoneMb(results)} MB)`);
+
+  say('starting engine…');
+  barEl.style.width = '100%';
+
+  const ioquake3 = (await import('./ioquake3.js')).default;
+
+  const canvas = document.getElementById('canvas');
+  ioquake3({
+    canvas,
+    arguments: [
+      '+set', 'net_enabled', '1',
+      '+set', 'sv_pure', '0',
+      '+set', 'com_basegame', gameId,
+      '+set', 'name', playerName,
+      '+connect', connectAddress,
+    ],
+    locateFile: (file) => new URL(file, location.href).href,
+    websocket: { url: gatewayUrl, subprotocol: 'binary' },
+    onAbort: (reason) => fail('engine aborted: ' + reason),
+    preRun: [async (module) => {
+      module.addRunDependency('setup-fs');
+      try {
+        for (const f of results) {
+          module.FS.mkdirTree(f.dir);
+          if (f.buf !== null) {
+            module.FS.writeFile(`${f.dir}/${f.name}`, new Uint8Array(f.buf));
+            f.buf = null; // free the copy once mounted
+          } else {
+            const data = await f.handle.getFile();
+            module.FS.writeFile(`${f.dir}/${f.name}`, new Uint8Array(await data.arrayBuffer()));
+          }
+          logLine(`mounted ${f.dir}/${f.name}`);
+        }
+      } finally {
+        module.removeRunDependency('setup-fs');
+      }
+    }],
+  });
+
+  canvas.style.display = 'block';
+  document.getElementById('bootNew').style.display = 'none';
+}
+</script>
+</body>
+</html>

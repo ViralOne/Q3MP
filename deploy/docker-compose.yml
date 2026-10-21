@@ -1,0 +1,61 @@
+services:
+  q3ded:
+    build:
+      context: ..
+      dockerfile: deploy/server/Dockerfile
+    image: q3-web-server:local
+    volumes:
+      # Your legally obtained pak0.pk3..pak8.pk3 go in ./quake3-data/baseq3/
+      - ./quake3-data:/data:ro
+      - server-state:/state
+    # Retail content by default; switch to demo with FS_BASEGAME: "demoq3".
+    # VMs come from the official pak7/pak8 point-release QVMs.
+    environment:
+      FS_BASEGAME: "baseq3"
+      # Remote console password, used by the admin panel. Change or override
+      # with RCON_PASSWORD=... in the environment; empty disables rcon.
+      RCON_PASSWORD: "${RCON_PASSWORD:-q3admin}"
+    ports:
+      # Optional: expose UDP so native ioquake3 players can join too.
+      # The WASM clients come in through the gateway over wss.
+      - "27960:27960/udp"
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/gateway/Dockerfile
+    image: q3-web-gateway:local
+    environment:
+      TARGET_HOST: q3ded
+      TARGET_PORT: "27960"
+      MAX_CONNECTIONS: "64"
+      # Validated against incoming /admin/api requests; must match the server.
+      RCON_PASSWORD: "${RCON_PASSWORD:-q3admin}"
+    volumes:
+      # Read-only access to the paks, to extract the list of loadable maps
+      # for /admin.html (names only, straight from the zip directories).
+      - ./quake3-data:/data:ro
+    depends_on:
+      - q3ded
+    restart: unless-stopped
+
+  web:
+    image: caddy:2
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./public:/srv/web:ro
+      - ./quake3-data:/srv/data:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    depends_on:
+      - gateway
+
+volumes:
+  server-state:
+  caddy_data:
+  caddy_config:

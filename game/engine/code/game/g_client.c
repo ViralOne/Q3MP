@@ -1035,6 +1035,60 @@ to the server machine, but qfalse on map changes and tournement
 restarts.
 ============
 */
+/*
+==============
+Score keep
+
+Players who disconnect get their score stashed by netname, and get it back
+if they reconnect before the map changes. The table lives in QVM static
+memory, so it resets automatically on every map change.
+==============
+*/
+#define SCOREKEEP_MAX	32
+
+typedef struct {
+	char	name[MAX_NETNAME];
+	int		score;
+	qboolean	used;
+} scorekeepEntry_t;
+
+static scorekeepEntry_t scorekeepTable[SCOREKEEP_MAX];
+
+static void G_ScoreKeepStash( gclient_t *client ) {
+	int		i;
+
+	if ( !g_scoreKeep.integer ) {
+		return;
+	}
+	if ( client->ps.persistant[PERS_SCORE] == 0 ) {
+		return;
+	}
+	for ( i = 0 ; i < SCOREKEEP_MAX ; i++ ) {
+		if ( !scorekeepTable[i].used
+			|| Q_stricmp( scorekeepTable[i].name, client->pers.netname ) == 0 ) {
+			Q_strncpyz( scorekeepTable[i].name, client->pers.netname, sizeof( scorekeepTable[i].name ) );
+			scorekeepTable[i].score = client->ps.persistant[PERS_SCORE];
+			scorekeepTable[i].used = qtrue;
+			return;
+		}
+	}
+}
+
+static void G_ScoreKeepRestore( gclient_t *client ) {
+	int		i;
+
+	if ( !g_scoreKeep.integer ) {
+		return;
+	}
+	for ( i = 0 ; i < SCOREKEEP_MAX ; i++ ) {
+		if ( scorekeepTable[i].used
+			&& Q_stricmp( scorekeepTable[i].name, client->pers.netname ) == 0 ) {
+			client->ps.persistant[PERS_SCORE] = scorekeepTable[i].score;
+			return;
+		}
+	}
+}
+
 char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 	char		*value;
 //	char		*areabits;
@@ -1106,6 +1160,9 @@ char *ClientConnect( int clientNum, qboolean firstTime, qboolean isBot ) {
 	G_LogPrintf( "ClientConnect: %i\n", clientNum );
 	ClientUserinfoChanged( clientNum );
 
+	// score keep: continue where this player left off in this map, if enabled
+	G_ScoreKeepRestore( client );
+
 	// don't do the "xxx connected" messages if they were caried over from previous level
 	if ( firstTime ) {
 		trap_SendServerCommand( -1, va("print \"%s" S_COLOR_WHITE " connected\n\"", client->pers.netname) );
@@ -1166,6 +1223,10 @@ void ClientBegin( int clientNum ) {
 	flags = client->ps.eFlags;
 	memset( &client->ps, 0, sizeof( client->ps ) );
 	client->ps.eFlags = flags;
+
+	// score keep re-applied here: the memset above wiped what
+	// ClientConnect restored into the playerstate
+	G_ScoreKeepRestore( client );
 
 	// locate ent at a spawn point
 	ClientSpawn( ent );
@@ -1468,6 +1529,12 @@ void ClientDisconnect( int clientNum ) {
 		level.restarted = qtrue;
 		level.changemap = NULL;
 		level.intermissiontime = 0;
+	}
+
+	// score keep: remember this player's score until they reconnect
+	// or the map changes
+	if ( !( ent->r.svFlags & SVF_BOT ) ) {
+		G_ScoreKeepStash( ent->client );
 	}
 
 	trap_UnlinkEntity (ent);

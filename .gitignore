@@ -3,6 +3,17 @@
 # IDE metadata
 .idea/
 
+# Quake III Arena game data (never commit proprietary PK3s)
+deploy/quake3-data/**/*.pk3
+
+# Vendored toolchains and Python virtualenvs (1.8 GB build toolchain)
+tools/emsdk/
+tools/venv/
+
+# Test scratch space
+deploy/test/tmp/
+deploy/test/.DS_Store
+
 # Game client build output
 /game/build/
 /game/dist/

@@ -1,0 +1,28 @@
+# Set DOMAIN at runtime: `DOMAIN=quake.example.com docker compose up -d`
+# Local testing default falls back to :80 (no TLS).
+{$DOMAIN:localhost} {
+	# HTML pages must always revalidate, or browsers keep stale copies
+	# after server-side updates (scripts out of sync with fetched assets).
+	@pages path / /index.html /admin.html
+	header @pages Cache-Control "no-cache"
+
+	@ws path /ws
+	handle @ws {
+		reverse_proxy gateway:8080
+	}
+
+	@admin_api path /admin/api/*
+	handle @admin_api {
+		reverse_proxy gateway:8080
+	}
+
+	handle_path /assets/* {
+		root * /srv/data
+		file_server
+	}
+
+	handle {
+		root * /srv/web
+		file_server
+	}
+}

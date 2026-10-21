@@ -44,6 +44,8 @@ vmCvar_t	g_fraglimit;
 vmCvar_t	g_timelimit;
 vmCvar_t	g_capturelimit;
 vmCvar_t	g_friendlyFire;
+
+vmCvar_t	g_scoreKeep;
 vmCvar_t	g_password;
 vmCvar_t	g_needpass;
 vmCvar_t	g_maxclients;
@@ -122,6 +124,8 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_synchronousClients, "g_synchronousClients", "0", CVAR_SYSTEMINFO, 0, qfalse  },
 
 	{ &g_friendlyFire, "g_friendlyFire", "0", CVAR_ARCHIVE, 0, qtrue  },
+
+	{ &g_scoreKeep, "g_scoreKeep", "1", CVAR_ARCHIVE, 0, qtrue  },
 
 	{ &g_teamAutoJoin, "g_teamAutoJoin", "0", CVAR_ARCHIVE  },
 	{ &g_teamForceBalance, "g_teamForceBalance", "0", CVAR_ARCHIVE  },

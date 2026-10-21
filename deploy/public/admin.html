@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quake III Arena — Server Admin</title>
+<style>
+  html, body { margin:0; padding:24px; width:calc(100% - 48px); background:#000; color:#ddd;
+    font-family:"SF Mono", Menlo, Consolas, monospace; }
+  h1 { font-size:22px; font-weight:700; letter-spacing:2px; color:#d94a36; text-transform:uppercase; margin:0 0 4px; }
+  #sub { color:#666; font-size:12px; margin-bottom:20px; }
+  #sub a { color:#878; }
+  .card { background:#111; border:1px solid #333; border-radius:4px; padding:14px 16px; margin-bottom:16px; max-width:860px; }
+  .card h2 { font-size:13px; color:#d94a36; margin:0 0 10px; text-transform:uppercase; letter-spacing:1px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  input, select { background:#0a0a0a; border:1px solid #444; color:#eee; font:inherit;
+    padding:7px 10px; border-radius:3px; outline-color:#d94a36; }
+  input[type=checkbox] { padding:0; width:auto; accent-color:#d94a36; }
+  #flags label { display:flex; gap:6px; align-items:center; font-size:12px; color:#bbb; cursor:pointer; }
+  button { background:#d94a36; border:0; color:#fff; font:inherit; padding:7px 14px;
+    cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
+  button.ghost { background:#222; color:#bbb; }
+  button:disabled { background:#552; color:#996; cursor:default; }
+  table { border-collapse:collapse; font-size:12px; width:100%; }
+  th, td { text-align:left; padding:4px 10px 4px 0; color:#bbb; }
+  th { color:#777; font-weight:400; text-transform:uppercase; font-size:10px; }
+  #out { background:#05070a; border:1px solid #244; color:#7c6; font-size:11px; line-height:1.5;
+    padding:8px 10px; white-space:pre-wrap; max-height:300px; overflow:auto; min-height:60px; }
+  #st { font-size:12px; color:#999; min-height:16px; }
+  .kv { color:#999; font-size:12px; }
+  .kv b { color:#ddd; font-weight:400; }
+</style>
+</head>
+<body>
+<h1>Server Admin</h1>
+<div id="sub"><a href="index.html">← back to the game</a></div>
+
+<div class="card">
+  <h2>Access</h2>
+  <div class="row">
+    <input id="pw" type="password" placeholder="rcon password" spellcheck="false">
+    <button id="pwSave" class="ghost">Save (this session)</button>
+    <span class="kv" id="pwState"></span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Status</h2>
+  <div class="row">
+    <button id="refresh">Refresh</button>
+    <span id="autoref" class="kv">auto-refresh every 5 s</span>
+  </div>
+  <div id="status" class="kv">connecting…</div>
+  <table id="players"></table>
+</div>
+
+<div class="card">
+  <h2>Game</h2>
+  <div class="row">
+    <label class="kv" for="map">Map:</label>
+    <input id="mapSearch" size="10" spellcheck="false" placeholder="filter…">
+    <input id="map" list="maps" size="14" spellcheck="false" placeholder="q3dm17">
+    <datalist id="maps"><option>…</option></datalist>
+    <button class="ghost" data-cmd="map %map%">Load Map</button>
+    <button class="ghost" data-cmd="nextmap">Next Map</button>
+    <button class="ghost" data-cmd="map_restart">Restart Round</button>
+    <span class="kv" id="mapCount"></span>
+  </div>
+  <div class="row">
+    <label class="kv" for="gt">Gametype:</label>
+    <select id="gt">
+      <option value="0">FFA (0)</option>
+      <option value="1">Tournament 1v1 (1)</option>
+      <option value="3">CTF (3)</option>
+      <option value="4">Team Deathmatch (4)</option>
+    </select>
+    <button class="ghost" data-cmd="g_gametype %gt%">Set (applies next map)</button>
+    <label class="kv" for="fl">Fraglimit:</label>
+    <input id="fl" size="4" value="20">
+    <button class="ghost" data-cmd="fraglimit %fl%">Set</button>
+    <label class="kv" for="tl">Timelimit:</label>
+    <input id="tl" size="4" value="15">
+    <button class="ghost" data-cmd="timelimit %tl%">Set</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Flags (server rules)</h2>
+  <div id="flags" class="row"></div>
+  <span class="kv">ticks are stored in the server config; unchecked means the engine default</span>
+</div>
+
+<div class="card">
+  <h2>Players</h2>
+  <div class="row">
+    <input id="kickNum" size="4" placeholder="slot #">
+    <button class="ghost" data-cmd="clientkick %kickNum%">Kick slot</button>
+    <button class="ghost" data-cmd="kickall">Kick everyone</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Console (any rcon command)</h2>
+  <div class="row">
+    <input id="cmd" size="40" spellcheck="false" placeholder="cvarlist sv_…">
+    <button id="run">Run</button>
+    <button class="ghost" data-cmd="quit" id="quitBtn">Restart server</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Output</h2>
+  <div id="out"></div>
+  <div id="st"></div>
+</div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const pwKey = 'q3.adminRcon';
+$('pw').value = sessionStorage.getItem(pwKey) || '';
+pwState();
+
+function pwState() {
+  $('pwState').textContent = $('pw').value
+    ? 'password stored for this browser tab'
+    : 'password required for every action (rcon)';
+}
+$('pwSave').addEventListener('click', () => {
+  sessionStorage.setItem(pwKey, $('pw').value);
+  pwState();
+});
+
+function out(text) { $('out').textContent = text + '\n\n' + $('out').textContent.slice(0, 8000); }
+let busy = false;
+
+async function rcon(command) {
+  const pw = $('pw').value;
+  if (!pw) { $('st').textContent = 'enter the rcon password first'; return null; }
+  if (busy) return null;
+  busy = true;
+  try {
+    const response = await fetch('/admin/api/rcon', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: pw, command }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      $('st').textContent = body.error || `HTTP ${response.status}`;
+      out(`> ${command}\nERROR: ${body.error || response.status}`);
+      return null;
+    }
+    out(`> ${command}\n${body.output}`);
+    $('st').textContent = `ran: ${command}`;
+    return body.output;
+  } catch (e) {
+    $('st').textContent = 'request failed: ' + (e && e.message || e);
+    return null;
+  } finally {
+    busy = false;
+  }
+}
+
+// buttons with data-cmd, %token% replaced from same-id input
+for (const button of document.querySelectorAll('button[data-cmd]')) {
+  button.addEventListener('click', async () => {
+    let cmd = button.dataset.cmd;
+    for (const token of cmd.match(/%(\w+)%/g) || []) {
+      const field = $(token.slice(1, -1));
+      if (!field || !field.value.trim()) { $('st').textContent = `fill in ${token.slice(1, -1)} first`; return; }
+      cmd = cmd.replace(token, field.value.trim());
+    }
+    await rcon(cmd);
+    if (cmd === 'quit') $('st').textContent += ' — the container will come back in a few seconds';
+    refresh();
+  });
+}
+$('run').addEventListener('click', async () => {
+  if ($('cmd').value.trim()) { await rcon($('cmd').value.trim()); $('cmd').value = ''; }
+});
+$('cmd').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('run').click(); });
+
+// --- flags (boolean server cvars, managed through rcon) -----------------------
+
+const FLAGS = [
+  { cvar: 'g_scoreKeep',       def: '1', hint: 'keep disconnected players\' scores until the map changes' },
+  { cvar: 'g_friendlyFire',    def: '0', hint: 'teammates take damage from each other' },
+  { cvar: 'g_allowVote',       def: '1', hint: 'players may call votes' },
+  { cvar: 'g_doWarmup',        def: '0', hint: 'warmup period before matches count' },
+  { cvar: 'g_teamForceBalance',def: '0', hint: 'auto-balance team sizes' },
+  { cvar: 'g_forcerespawn',    def: '0', hint: 'force auto-respawn after death (g_forcerespawn > 0)' },
+];
+for (const f of FLAGS) {
+  const label = document.createElement('label');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = f.def === '1';
+  box.addEventListener('click', (e) => {
+    e.preventDefault(); // never flip until the rcon command succeeds
+    box.disabled = true;
+    (async () => {
+      const ok = await rcon(`set ${f.cvar} ${box.checked ? '0' : '1'}`);
+      if (ok) box.checked = !box.checked;
+      box.disabled = false;
+    })();
+  });
+  label.append(box, document.createTextNode(f.hint));
+  label.title = `set ${f.cvar} 1|0`;
+  $('flags').append(label);
+}
+
+// --- map list from the actual server paks --------------------------------------
+
+let allMaps = [];
+async function loadMapList() {
+  try {
+    const response = await fetch('/admin/api/maps');
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { $('mapCount').textContent = body.error || `HTTP ${response.status}`; return; }
+    allMaps = body.maps || [];
+    $('mapCount').textContent = allMaps.length ? `${allMaps.length} maps in the paks` : (body.warning || 'no maps found');
+    filterMaps();
+  } catch (e) {
+    $('mapCount').textContent = 'map list failed: ' + (e && e.message || e);
+  }
+}
+function filterMaps() {
+  const q = $('mapSearch').value.trim().toLowerCase();
+  const mapOptions = allMaps.filter((m) => !q || m.includes(q)).slice(0, 400);
+  $('maps').innerHTML = mapOptions.map((m) => `<option>${escapeHtml(m)}</option>`).join('');
+}
+$('mapSearch').addEventListener('input', filterMaps);
+
+async function refresh() {
+  if (!$('pw').value) { $('status').textContent = 'enter the rcon password above'; $('players').textContent = ''; return; }
+  try {
+    const response = await fetch('/admin/api/status', {
+      headers: { 'x-admin-password': $('pw').value },
+    });
+    const status = await response.json();
+    if (!response.ok) { $('status').textContent = status.error || `HTTP ${response.status}`; return; }
+    const info = status.info || {};
+    $('status').innerHTML =
+      `<b>${escapeHtml(info.sv_hostname || '?')}</b> · map <b>${escapeHtml(info.mapname || '?')}</b>` +
+      ` · gametype <b>${gametype(info.g_gametype)}</b>` +
+      ` · players <b>${status.players.length}/${info.sv_maxclients ?? '?'}</b>` +
+      ` · frag/timelimit <b>${info.fraglimit ?? '?'}/${info.timelimit ?? '?'}</b>`;
+    $('players').innerHTML =
+      '<tr><th>#</th><th>score</th><th>ping</th><th>name</th><th></th></tr>' +
+      (status.players.map((p, i) =>
+        `<tr><td>${i}</td><td>${p.score}</td><td>${p.ping === 'bot' ? 'bot' : p.ping}</td>` +
+        `<td>${escapeHtml(p.name)}</td>` +
+        `<td><button class="ghost" style="padding:2px 8px" data-kick="${i}">kick</button></td></tr>`).join('') || '');
+    for (const b of document.querySelectorAll('button[data-kick]')) {
+      b.addEventListener('click', async () => { await rcon(`clientkick ${b.dataset.kick}`); refresh(); });
+    }
+  } catch (e) {
+    $('status').textContent = 'status failed: ' + (e && e.message || e);
+  }
+}
+
+function gametype(t) {
+  return { 0: 'FFA', 1: '1v1', 3: 'CTF', 4: 'TDM' }[String(t)] || t;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+$('refresh').addEventListener('click', refresh);
+setInterval(refresh, 5000);
+refresh();
+loadMapList();
+</script>
+</body>
+</html>
