@@ -1140,6 +1140,8 @@ static void IN_ProcessEvents( void )
 				break;
 
 			case SDL_MOUSEWHEEL:
+				// debug: every raw wheel event as the browser delivers it
+				Com_Printf( "clwheel: y=%d\n", e.wheel.y );
 				if( e.wheel.y > 0 )
 				{
 					Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELUP, qtrue, 0, NULL );

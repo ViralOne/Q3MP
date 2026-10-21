@@ -1580,6 +1580,10 @@ void CG_NextWeapon_f( void ) {
 	if ( i == MAX_WEAPONS ) {
 		cg.weaponSelect = original;
 	}
+
+	// debug: wheel-driven weapon cycling
+	CG_Printf( "cgweap: next %d -> %d inv=0x%x\n", original, cg.weaponSelect,
+		cg.snap->ps.stats[STAT_WEAPONS] );
 }
 
 /*
@@ -1613,6 +1617,10 @@ void CG_PrevWeapon_f( void ) {
 	if ( i == MAX_WEAPONS ) {
 		cg.weaponSelect = original;
 	}
+
+	// debug: wheel-driven weapon cycling
+	CG_Printf( "cgweap: prev %d -> %d inv=0x%x\n", original, cg.weaponSelect,
+		cg.snap->ps.stats[STAT_WEAPONS] );
 }
 
 /*
