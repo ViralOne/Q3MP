@@ -29,6 +29,9 @@ list(APPEND CLIENT_LINK_OPTIONS
     -sFORCE_FILESYSTEM=1
     -sWASMFS=0
     -sENVIRONMENT=web
+    # keep the wasm function-name section so a RuntimeError stack trace
+    # (e.g. trapping at an address) maps back to real symbols for debugging
+    --profiling-funcs
     # ccall + exports let the launcher shell push client console commands
     # (e.g. in_wheelPx) into the engine after boot.
     -sEXPORTED_RUNTIME_METHODS=FS,addRunDependency,removeRunDependency,callMain,ccall

@@ -83,7 +83,10 @@ window.addEventListener('error', (e) => {
   if (panel && error) {
     document.getElementById('login').style.display = 'none';
     panel.style.display = '';
-    error.textContent = 'script error: ' + (e.message || e.type || 'unknown');
+    const stack = e.error && e.error.stack
+      ? String(e.error.stack).split('\n').filter(Boolean).slice(0, 8).join('\n')
+      : '';
+    error.textContent = 'script error: ' + (e.message || e.type || 'unknown') + (stack ? '\n' + stack : '');
   }
 });
 </script>
@@ -717,13 +720,13 @@ async function start() {
   document.getElementById('bootNew').style.display = '';
 
   try {
-    await loadGame(playerName, playerModel);
+    await loadGame(playerName, playerModel, useConnect, useGateway);
   } catch (e) {
     fail(String(e && e.message || e));
   }
 }
 
-async function loadGame(playerName, playerModel) {
+async function loadGame(playerName, playerModel, useConnect, useGateway) {
   say(`preparing ${gameId} data…`);
   barBox.style.display = 'block';
 

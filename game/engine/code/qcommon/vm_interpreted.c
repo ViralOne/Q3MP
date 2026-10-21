@@ -801,19 +801,23 @@ nextInstruction2:
 			goto nextInstruction;
 		case OP_DIVI:
 			opStackOfs--;
-			opStack[opStackOfs] = r1 / r0;
+			// A zeroing guard keeps a QVM divide-by-zero from trapping the
+			// whole wasm module (wasm i32.div_s raises a RuntimeError the
+			// engine cannot recover from); virtual machines written for the
+			// reference interpreter assume id's undefined-behavior results.
+			opStack[opStackOfs] = r0 ? r1 / r0 : 0;
 			goto nextInstruction;
 		case OP_DIVU:
 			opStackOfs--;
-			opStack[opStackOfs] = ((unsigned) r1) / ((unsigned) r0);
+			opStack[opStackOfs] = r0 ? ((unsigned) r1) / ((unsigned) r0) : 0;
 			goto nextInstruction;
 		case OP_MODI:
 			opStackOfs--;
-			opStack[opStackOfs] = r1 % r0;
+			opStack[opStackOfs] = r0 ? r1 % r0 : 0;
 			goto nextInstruction;
 		case OP_MODU:
 			opStackOfs--;
-			opStack[opStackOfs] = ((unsigned) r1) % ((unsigned) r0);
+			opStack[opStackOfs] = r0 ? ((unsigned) r1) % ((unsigned) r0) : 0;
 			goto nextInstruction;
 		case OP_MULI:
 			opStackOfs--;

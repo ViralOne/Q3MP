@@ -6,6 +6,10 @@
 	@pages path / /index.html /admin.html
 	header @pages Cache-Control "no-cache"
 
+	# the engine bundle changes whenever the wasm is rebuilt; revalidate
+	@engine path /ioquake3.js /ioquake3.wasm
+	header @engine Cache-Control "no-cache"
+
 	@ws path /ws
 	handle @ws {
 		reverse_proxy gateway:8080
