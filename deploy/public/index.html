@@ -19,7 +19,7 @@
     padding:10px 12px; min-width:0; flex:1; border-radius:3px; }
   #login select:disabled { opacity:.5; }
   #login .previewRow { display:flex; align-items:center; gap:10px; margin-top:10px; }
-  #modelPreview { width:64px; height:64px; flex:0 0 64px; image-rendering:pixelated;
+  #modelPreview { position:static; width:64px; height:64px; flex:0 0 64px; image-rendering:pixelated;
     background:#0d0d0d; border:1px solid #333; border-radius:3px; display:none; }
   #modelPreview.has { display:block; }
   #login button { background:#d94a36; border:0; color:#fff; font:inherit; padding:10px 22px;
@@ -184,6 +184,33 @@ for (const m of models) {
 const savedModel = localStorage.getItem(modelKey);
 if (savedModel && models.includes(savedModel)) modelInput.value = savedModel;
 
+
+// WebSocket gateway URL. The Emscripten UDP socket layer talks to it with one
+// binary frame per Quake 3 datagram.
+const gatewayUrl = params.get('server') ||
+  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+
+// Quake connect address (display + net stamping only; traffic flows over the ws
+// gateway). Defaults to this host on the standard Q3 port.
+const connectAddress = params.get('connect') || `${location.hostname}:27960`;
+
+// Where PK3 files live (served by the same site under /assets/...).
+const dataBase = params.get('data') || '/assets/';
+
+// Game directory: baseq3 (retail paks, default) or demoq3 (free demo pack,
+// via ?game=demoq3).
+const gameId = (params.get('game') || 'baseq3').replace(/[^\w]/g, '') || 'baseq3';
+
+// Asset list: retail pak0..pak8 (the official 1.32 point release carries the
+// VMs in pak7/pak8) or the demo pack plus server maps.
+const files = gameId === 'baseq3'
+  ? Array.from({ length: 9 }, (_, i) => `baseq3/pak${i}.pk3`)
+  : [`demoq3/pak0.pk3`,
+     `demoq3/map_oxodm1.pk3`, `demoq3/map_oxodm6.pk3`, `demoq3/padcrash.pk3`];
+
+function dirOf(rel) { return `/${rel.split('/')[0]}`; }
+function baseOf(rel) { return rel.match(/[^/]+$/)[0]; }
+
 // ------------------------------------------------------------- character preview
 // Shows the retail "icon_default.tga" that ships for every player model in
 // pak0. Rather than downloading the whole pak, the icon is pulled out with two
@@ -333,32 +360,6 @@ async function updatePreview() {
 
 modelInput.addEventListener('change', updatePreview);
 updatePreview();
-
-// WebSocket gateway URL. The Emscripten UDP socket layer talks to it with one
-// binary frame per Quake 3 datagram.
-const gatewayUrl = params.get('server') ||
-  `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
-
-// Quake connect address (display + net stamping only; traffic flows over the ws
-// gateway). Defaults to this host on the standard Q3 port.
-const connectAddress = params.get('connect') || `${location.hostname}:27960`;
-
-// Where PK3 files live (served by the same site under /assets/...).
-const dataBase = params.get('data') || '/assets/';
-
-// Game directory: baseq3 (retail paks, default) or demoq3 (free demo pack,
-// via ?game=demoq3).
-const gameId = (params.get('game') || 'baseq3').replace(/[^\w]/g, '') || 'baseq3';
-
-// Asset list: retail pak0..pak8 (the official 1.32 point release carries the
-// VMs in pak7/pak8) or the demo pack plus server maps.
-const files = gameId === 'baseq3'
-  ? Array.from({ length: 9 }, (_, i) => `baseq3/pak${i}.pk3`)
-  : [`demoq3/pak0.pk3`,
-     `demoq3/map_oxodm1.pk3`, `demoq3/map_oxodm6.pk3`, `demoq3/padcrash.pk3`];
-
-function dirOf(rel) { return `/${rel.split('/')[0]}`; }
-function baseOf(rel) { return rel.match(/[^/]+$/)[0]; }
 
 playBtn.addEventListener('click', start);
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') start(); });
