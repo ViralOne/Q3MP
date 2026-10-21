@@ -473,20 +473,6 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 	ps = SV_GameClientNum( client - svs.clients );
 	frame->ps = *ps;
 
-	// debug: what does the engine's copy of the game's ps look like?
-	{
-		static int probeCount = 0;
-		if ( !( probeCount++ & 127 ) ) {
-			Com_Printf( "svcopy: cl=%d psOffset=%d gSize=%d s0..5=%d,%d,0x%x,%d,%d,%d health=%d\n",
-				(int)( client - svs.clients ),
-				(int)( (byte *)ps - (byte *)sv.gameClients ),
-				sv.gameClientSize,
-				frame->ps.stats[0], frame->ps.stats[1], frame->ps.stats[2],
-				frame->ps.stats[3], frame->ps.stats[4], frame->ps.stats[5],
-				frame->ps.stats[0] );
-		}
-	}
-
 	// never send client's own entity, because it can
 	// be regenerated from the playerstate
 	clientNum = frame->ps.clientNum;

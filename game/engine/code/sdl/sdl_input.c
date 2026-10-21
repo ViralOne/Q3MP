@@ -1347,10 +1347,6 @@ static EM_BOOL IN_WebWheel( int eventType, const EmscriptenWheelEvent *wheelEven
 		Com_QueueEvent( in_eventTime, SE_KEY, K_MWHEELUP, qfalse, 0, NULL );
 	}
 
-	// debug: raw wheel deltas as the browser delivers them + accumulator state
-	Com_Printf( "htmlwheel: dy=%.2f mode=%d acc=%.2f\n", wheelEvent->deltaY,
-		wheelEvent->deltaMode, in_wheelAccum );
-
 	return EM_FALSE;
 }
 

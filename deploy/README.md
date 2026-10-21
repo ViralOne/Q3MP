@@ -33,10 +33,42 @@ Browser (ioquake3 WASM)  ──ws(s)──▶  Caddy (TLS)  ──▶  Gateway (
 | --- | --- |
 | `public/` | Static site: launcher (`index.html`) + WASM engine (`ioquake3.js`, `ioquake3.wasm`) + `admin.html` |
 | `gateway/Dockerfile`, `gateway/gateway.mjs` | WebSocket-to-UDP gateway + admin API |
-| `server/Dockerfile`, `server/entrypoint.sh`, `server/defaults/server.cfg` | Linux ioq3ded build + startup |
+| `server/Dockerfile`, `server/entrypoint.sh`, `server/defaults/*.cfg` | Linux ioq3ded build + startup (`baseq3.cfg` / `demoq3.cfg` defaults) |
 | `docker-compose.yml` | q3ded + gateway + caddy |
 | `Caddyfile` | TLS, static site, `/ws` proxy, `/assets` PK3 serving, `/admin/api` proxy |
+| `quake3-data/<game>/` | Your game-data mount; shared read-only by server/gateway, writable for server-published pk3s |
 | `test/` | Local smoke test scripts (WS client, UDP client) |
+
+## Game data you must provide
+
+**Nothing proprietary ships with this repo.** Put your legally obtained files
+in `quake3-data/` (this directory is git-ignored):
+
+```
+quake3-data/
+  baseq3/            <- retail point release 1.32
+    pak0.pk3 .. pak8.pk3     (required: the 9 official paks)
+  demoq3/            <- free demo pack, wired by default (no purchase needed)
+    pak0.pk3, oxodm1.pk3, oxodm6.pk3, padcrash.pk3
+```
+
+Switch modes with the `FS_BASEGAME` environment variable in
+`docker-compose.yml` (`"baseq3"` or `"demoq3"` — default `baseq3` when the
+retail paks are present).
+
+Two small pk3s are **built by the server image and copied in automatically on
+every container start** — do not add or delete them by hand:
+
+| pk3 | Where it ends up | What it carries |
+| --- | --- | --- |
+| `zz-scorekeep.pk3` | server only (`/game/baseq3/`) | fork `qagame.qvm` (score keep via `g_scoreKeep`) |
+| `zz-cgame.pk3` | server + re-published into `quake3-data/baseq3/` so the launcher downloads it | fork `cgame.qvm` only: mouse-wheel weapon cycling for browser clients |
+
+Later paks override earlier ones, so the `zz-` prefix guarantees they win over
+the retail VMs. The `zz-` names are expected on disk after `docker compose up`;
+deleting them just makes the container re-copy them on next restart. Client
+machines download `zz-cgame.pk3` automatically like any other asset (one
+~98 KB file in the OPFS cache).
 
 ## Server setup (Linux VPS with Docker)
 
@@ -90,10 +122,14 @@ Browser (ioquake3 WASM)  ──ws(s)──▶  Caddy (TLS)  ──▶  Gateway (
 
 ## Game code (VMs)
 
-The official point-release paks carry the game code: `pak7.pk3`/`pak8.pk3`
-contain the id 1.32 QVMs (cgame/qagame/ui), so both the dedicated server and the
-browser client run the vanilla VMs straight out of the paks. Set
-`FS_BASEGAME: "baseq3"` and all nine paks are everything you need.
+The official point-release paks carry baseline game code: `pak7.pk3`/`pak8.pk3`
+contain the id 1.32 QVMs (cgame/qagame/ui). On top of that this stack loads two
+build-product pk3s (see the table above): the **server** runs the fork's
+`qagame.qvm` (score keep) and **browser clients** run the fork's `cgame.qvm`
+(weapon-wheel fix), while menus (`ui.qvm`) stay vanilla — the fork's UI needs
+menu data files we cannot redistribute. Native desktop players also load the
+fork's game module from the server (fair: the ping-limiting and score rules
+apply to everyone).
 
 ## Admin panel
 
@@ -109,6 +145,11 @@ into rcon datagrams; the game server validates the password again. An empty
   `g_scoreKeep` (keep disconnected players' scores until the map changes),
   `g_friendlyFire`, `g_allowVote`, `g_doWarmup`, `g_teamForceBalance`,
   `g_forcerespawn`.
+- **Bots** card adds bots with a skill slider (`addbot <name> <skill 1-5>`,
+  skills: 1 I-can-win … 5 nightmare) and removes them with
+  `kick <name>` / `kickbots`. `bot_minplayers` is a one-fill field that adds
+  bots until the map has that many players (set it back to `0` to stop
+  auto-filling).
 - **Maps** dropdown is built live from the installed paks
   (`/admin/api/maps` — the gateway reads only the zip central directory),
   grouped FFA / duel / CTF / pro, with a filter field.
@@ -132,6 +173,11 @@ anyone who knows the password could otherwise use the panel.
 - **Fullscreen**: browsers can exit fullscreen/pointer-lock on ESC — the
   `fullscreen` button (bottom-right, hidden while the game owns the mouse)
   restores it in one click; it flips to `window` while fullscreen is active.
+- **Mouse wheel sensitivity**: the toolbar's `wheel −` / `wheel +` buttons set
+  `in_wheelPx` — pixels of wheel scroll per weapon step (lower = more
+  sensitive). It takes effect immediately and is remembered per browser
+  (localStorage + the engine's archived config). The wheel cycles every owned
+  weapon slot in one step, including empty-ammo guns.
 - **Score keep**: `g_scoreKeep 1` (default) preserves each player's score
   across disconnects until the map changes — reconnect and continue where you
   left off. Stashes are keyed by netname, max 32 per map.

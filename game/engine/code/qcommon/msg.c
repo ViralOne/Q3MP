@@ -1193,20 +1193,6 @@ void MSG_WriteDeltaPlayerstate( msg_t *msg, struct playerState_s *from, struct p
 		}
 	}
 
-	// debug: what the server is about to send for the weapons stat (index 2);
-	// stays silent unless the delta base disagrees with the current ps
-	{
-		int fromW = from->stats[2], toW = to->stats[2];
-		if ( fromW != toW ) {
-			static int probeCount = 0;
-			if ( !( probeCount++ & 15 ) ) {
-				Com_Printf( "svPS: fromW=0x%x toW=0x%x statsbits=0x%x health %d -> %d ammo2 %d -> %d\n",
-					fromW, toW, statsbits, from->stats[0], to->stats[0],
-					from->ammo[2], to->ammo[2] );	// 2 = WP_MACHINEGUN
-			}
-		}
-	}
-
 	persistantbits = 0;
 	for (i=0 ; i<MAX_PERSISTANT ; i++) {
 		if (to->persistant[i] != from->persistant[i]) {

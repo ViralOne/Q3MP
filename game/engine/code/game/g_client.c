@@ -1388,12 +1388,6 @@ void ClientSpawn(gentity_t *ent) {
 	client->ps.ammo[WP_GAUNTLET] = -1;
 	client->ps.ammo[WP_GRAPPLING_HOOK] = -1;
 
-	// spawn state debug (weapon/ammo reported to the console for tracking down
-	// client-side "OUT OF AMMO" HUD reports)
-	G_LogPrintf( "spawninfo: %s cl=%d team=%d weapons=0x%x mg=100 score=%d\n",
-		client->pers.netname, index, client->sess.sessionTeam,
-		client->ps.stats[STAT_WEAPONS], client->ps.persistant[PERS_SCORE] );
-
 	// health will count down towards max_health
 	ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH] + 25;
 
