@@ -26,8 +26,24 @@
   #login button { background:#d94a36; border:0; color:#fff; font:inherit; padding:10px 22px;
     cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
   #login button:disabled { background:#552; color:#996; cursor:default; }
-  #login .hint { font-size:11px; color:#666; }
-  #login a { color:#878; }
+  #login .hint { font-size:12px; color:#8a8a8a; }
+  #login a { color:#a9a; }
+  /* map gallery: this server's maps with their levelshots */
+  #gallery { width:min(760px, 92vw); margin-top:6px; }
+  #gallery[hidden] { display:none; }
+  #galleryTitle { margin-bottom:6px; text-align:center; }
+  #galleryStrip { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 10px;
+    scroll-snap-type:x proximity; scrollbar-color:#444 transparent; }
+  .mapCard { flex:0 0 120px; background:#0d0d0d; border:1px solid #333; border-radius:3px;
+    overflow:hidden; scroll-snap-align:start; }
+  .mapCard img, .mapCard .noshot { width:120px; height:90px; object-fit:cover; display:block;
+    background:#181818; }
+  .mapCard .noshot { display:flex; align-items:center; justify-content:center; color:#777;
+    font-size:11px; }
+  .mapCard span { display:block; font-size:12px; color:#ccc; padding:5px 7px; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  .mapCard.now { border-color:#d94a36; }
+  .mapCard.now span::before { content:'\25B6  '; color:#d94a36; }
   #bar { width:min(420px, 70vw); height:8px; background:#222; border:1px solid #333; display:none; }
   #bar i { display:block; height:100%; width:0%; background:#d94a36; transition:width .15s; }
   #status { font-size:12px; color:#999; min-height:18px; }
@@ -67,6 +83,10 @@
   </div>
   <div class="hint" id="serverHint">loading server list…</div>
   <div class="hint">name is remembered · pk3 downloads are cached <a id="clearCache" href="#">(clear)</a> · <a href="admin.html">server admin</a></div>
+  <div id="gallery" hidden>
+    <div class="hint" id="galleryTitle">maps on this server</div>
+    <div id="galleryStrip"></div>
+  </div>
 </div>
 <div class="panel" id="bootNew" style="display:none">
   <div id="bar"><i></i></div>
@@ -677,6 +697,68 @@ function localOption() {
 }
 
 refreshServers();
+
+// ------------------------------------------------------------- map gallery
+// This server's maps (gateway /maps) with their levelshots, the one being
+// played first. Only about this stack, so it hides while another server is
+// picked or a direct ?server= link is in use.
+const galleryBox = document.getElementById('gallery');
+const galleryStrip = document.getElementById('galleryStrip');
+const galleryTitle = document.getElementById('galleryTitle');
+let galleryReady = false;
+
+function noShot() {
+  const box = document.createElement('div');
+  box.className = 'noshot';
+  box.textContent = 'no screenshot';
+  return box;
+}
+
+function mapCard(m, isNow) {
+  const card = document.createElement('div');
+  card.className = isNow ? 'mapCard now' : 'mapCard';
+  card.title = isNow ? `${m.name} — being played now` : m.name;
+  if (m.shot) {
+    const img = new Image();
+    img.loading = 'lazy';
+    img.alt = m.name;
+    img.src = `/levelshot/${encodeURIComponent(m.name)}`;
+    img.onerror = () => img.replaceWith(noShot());
+    card.append(img);
+  } else {
+    card.append(noShot());
+  }
+  const label = document.createElement('span');
+  label.textContent = m.name;
+  card.append(label);
+  return card;
+}
+
+function showGallery() {
+  galleryBox.hidden = !galleryReady || directServer || Boolean(serverSelect.value);
+}
+
+async function loadGallery() {
+  try {
+    const r = await fetch('/maps', { cache: 'no-store' });
+    if (!r.ok) return;
+    const { maps, current } = await r.json();
+    if (!Array.isArray(maps) || !maps.length) return;
+    const now = current && current.mapname;
+    const sorted = [...maps].sort((a, b) =>
+      (Number(b.name === now) - Number(a.name === now)) || a.name.localeCompare(b.name));
+    galleryStrip.replaceChildren(...sorted.map((m) => mapCard(m, m.name === now)));
+    galleryTitle.textContent = now
+      ? `${maps.length} maps on this server · now: ${now} · ${gametypeName(current.gametype)} · ${current.players}/${current.maxclients} players`
+      : `${maps.length} maps on this server`;
+    galleryReady = true;
+    showGallery();
+  } catch (e) {
+    console.error('map gallery:', e && e.message || e);
+  }
+}
+serverSelect.addEventListener('change', showGallery);
+loadGallery();
 
 playBtn.addEventListener('click', start);
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') start(); });

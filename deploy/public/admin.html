@@ -29,6 +29,19 @@
   #st { font-size:12px; color:#999; min-height:16px; }
   .kv { color:#999; font-size:12px; }
   .kv b { color:#ddd; font-weight:400; }
+  /* map gallery: click a levelshot to pick the map */
+  #mapGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(112px, 1fr)); gap:8px;
+    max-height:340px; overflow:auto; margin-bottom:10px; padding-right:4px; }
+  .mapTile { background:#0a0a0a; border:1px solid #333; border-radius:3px; padding:0; cursor:pointer;
+    text-transform:none; letter-spacing:0; color:#ccc; text-align:left; overflow:hidden; }
+  .mapTile:hover { border-color:#777; }
+  .mapTile.sel { border-color:#d94a36; outline:1px solid #d94a36; }
+  .mapTile.now span::after { content:' \00B7  now'; color:#d94a36; }
+  .mapTile img, .mapTile .noshot { width:100%; aspect-ratio:4/3; object-fit:cover; display:block;
+    background:#181818; }
+  .mapTile .noshot { display:flex; align-items:center; justify-content:center; color:#777; font-size:11px; }
+  .mapTile span { display:block; font-size:12px; padding:4px 6px; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis; }
 </style>
 </head>
 <body>
@@ -42,9 +55,9 @@
     <button id="unlock">Unlock</button>
     <span class="kv" id="pwState"></span>
   </div>
-  <div class="kv" style="font-size:11px">
-    the password is the <b>RCON_PASSWORD</b> env var from <b>deploy/docker-compose.yml</b>
-    (deploy default: <b>q3admin</b> · change it there + <code>docker compose up -d</code>)
+  <div class="kv" style="font-size:12px">
+    the password is the <b>RCON_PASSWORD</b> the stack was started with
+    (environment or <b>.env</b> next to the compose file)
   </div>
 </div>
 
@@ -68,7 +81,8 @@
     <button class="ghost" data-cmd="nextmap">Next Map</button>
     <button class="ghost" data-cmd="map_restart">Restart Round</button>
   </div>
-  <div class="kv" id="mapInfo" style="font-size:11px;margin-bottom:8px">loading the map list from the server paks…</div>
+  <div class="kv" id="mapInfo" style="font-size:12px;margin-bottom:8px">loading the map list from the server paks…</div>
+  <div id="mapGrid"></div>
   <div class="row">
     <label class="kv" for="gt">Gametype:</label>
     <select id="gt">
@@ -161,7 +175,7 @@ async function unlock() {
       return true;
     }
     $('pwState').textContent =
-      'password rejected — it must match RCON_PASSWORD in deploy/docker-compose.yml (deploy default: q3admin)';
+      'password rejected — it must match the RCON_PASSWORD the stack was started with';
     return false;
   } catch (e) {
     $('pwState').textContent = 'unlock failed: ' + (e && e.message || e);
@@ -188,8 +202,8 @@ async function rcon(command) {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (response.status === 403) {
-        $('st').textContent = 'wrong password — hit Unlock in the Access card (must match RCON_PASSWORD in deploy/docker-compose.yml)';
-        out(`> ${command}\nERROR: rejected — the password does not match RCON_PASSWORD (deploy default: q3admin)`);
+        $('st').textContent = 'wrong password — hit Unlock in the Access card (must match RCON_PASSWORD)';
+        out(`> ${command}\nERROR: rejected — the password does not match RCON_PASSWORD`);
       } else {
         $('st').textContent = body.error || `HTTP ${response.status}`;
         out(`> ${command}\nERROR: ${body.error || response.status}`);
@@ -285,7 +299,51 @@ function mapCategory(m) {
 }
 
 let allMaps = [];
+let mapShots = new Set();   // maps that have a levelshot (gateway /maps)
+let currentMap = '';
+
+function mapTile(m) {
+  const tile = document.createElement('button');
+  tile.type = 'button';
+  tile.className = 'mapTile' + (m === $('map').value ? ' sel' : '') + (m === currentMap ? ' now' : '');
+  tile.title = `maps/${m}.bsp — click to select, then Load Map`;
+  if (mapShots.has(m)) {
+    const img = new Image();
+    img.loading = 'lazy';
+    img.alt = m;
+    img.src = `/levelshot/${encodeURIComponent(m)}`;
+    img.onerror = () => { const n = document.createElement('div'); n.className = 'noshot'; n.textContent = 'no screenshot'; img.replaceWith(n); };
+    tile.append(img);
+  } else {
+    const n = document.createElement('div');
+    n.className = 'noshot';
+    n.textContent = 'no screenshot';
+    tile.append(n);
+  }
+  const label = document.createElement('span');
+  label.textContent = m;
+  tile.append(label);
+  tile.addEventListener('click', () => {
+    $('map').value = m;
+    $('map').dispatchEvent(new Event('change'));
+  });
+  return tile;
+}
+
+async function loadShots() {
+  try {
+    const response = await fetch('/maps', { cache: 'no-store' });
+    if (!response.ok) return;
+    const body = await response.json();
+    mapShots = new Set((body.maps || []).filter((m) => m.shot).map((m) => m.name));
+    currentMap = (body.current && body.current.mapname) || '';
+  } catch {
+    // gallery thumbnails are optional; the picker works without them
+  }
+}
+
 async function loadMapList() {
+  await loadShots();
   try {
     const response = await fetch('/admin/api/maps');
     const body = await response.json().catch(() => ({}));
@@ -313,6 +371,7 @@ function filterMaps() {
   blank.textContent = q && maps.length ? `… ${maps.length} maps match "${q}"` : '— pick a map —';
   select.append(blank);
 
+  $('mapGrid').replaceChildren(...maps.map(mapTile));
   if (!maps.length) return;
   const grouped = new Map();
   for (const m of maps) {
@@ -338,6 +397,9 @@ $('mapSearch').addEventListener('keydown', (e) => {
 });
 $('map').addEventListener('change', () => {
   if ($('map').value) $('mapInfo').textContent = `selected: maps/${$('map').value}.bsp (loaded through rcon "map")`;
+  for (const tile of $('mapGrid').children) {
+    tile.classList.toggle('sel', tile.querySelector('span').textContent === $('map').value);
+  }
 });
 
 async function refresh() {
@@ -349,6 +411,13 @@ async function refresh() {
     const status = await response.json();
     if (!response.ok) { $('status').textContent = status.error || `HTTP ${response.status}`; return; }
     const info = status.info || {};
+    const now = String(info.mapname || '').toLowerCase();
+    if (now && now !== currentMap) {
+      currentMap = now;
+      for (const tile of $('mapGrid').children) {
+        tile.classList.toggle('now', tile.querySelector('span').textContent === now);
+      }
+    }
     $('status').innerHTML =
       `<b>${escapeHtml(info.sv_hostname || '?')}</b> · map <b>${escapeHtml(info.mapname || '?')}</b>` +
       ` · gametype <b>${gametype(info.g_gametype)}</b>` +

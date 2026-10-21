@@ -23,6 +23,7 @@
 import { createServer } from "node:http";
 import { createSocket } from "node:dgram";
 import { timingSafeEqual } from "node:crypto";
+import { inflateRawSync } from "node:zlib";
 import { readdirSync, openSync, readSync, fstatSync, closeSync } from "node:fs";
 import { basename } from "node:path";
 import { WebSocketServer } from "ws";
@@ -145,11 +146,15 @@ function authorized(body) {
 // directory, so we never decompress anything — we just read the directory
 // records at the end of each file (cheap even for the 450 MB pak0).
 
-let mapsCache = { at: 0, maps: [], warning: "", };
+let mapsCache = { at: 0, maps: [], shots: new Map(), warning: "", };
 
+// Every maps/<name>.bsp, plus the levelshots/<name>.jpg|tga screenshot for
+// the gallery. pk3s are scanned in name order and later ones win, the same
+// precedence the engine uses; names are matched case-insensitively.
 function listAvailableMaps() {
   if (Date.now() - mapsCache.at < 60_000) return mapsCache;
   const maps = new Set();
+  const shots = new Map();
   let warning = "";
   try {
     const files = readdirSync(options.mapsDir)
@@ -158,10 +163,14 @@ function listAvailableMaps() {
     if (!files.length) warning = `no pk3 files found in ${options.mapsDir}`;
     for (const file of files) {
       try {
-        for (const name of zipNames(`${options.mapsDir}/${file}`)) {
+        const path = `${options.mapsDir}/${file}`;
+        for (const entry of zipEntries(path)) {
+          const name = entry.name.toLowerCase();
           if (name.endsWith(".bsp") && name.startsWith("maps/")) {
             maps.add(name.slice("maps/".length, -".bsp".length));
           }
+          const shot = /^levelshots\/([^/]+)\.(jpg|tga)$/.exec(name);
+          if (shot) shots.set(shot[1], { path, entry, type: shot[2] });
         }
       } catch (e) {
         warning = `${file}: ${String(e && e.message || e)}`;
@@ -170,12 +179,83 @@ function listAvailableMaps() {
   } catch (e) {
     warning = `cannot list ${options.mapsDir}: ${String(e && e.message || e)}`;
   }
-  mapsCache = { at: Date.now(), maps: [...maps].sort(), warning };
+  mapsCache = { at: Date.now(), maps: [...maps].sort(), shots, warning };
   return mapsCache;
 }
 
-// Read one zip archive's central directory and return every file name.
-function zipNames(path) {
+// One file out of a pk3 (stored or deflated), capped so a bogus header cannot
+// make the gateway allocate unbounded memory.
+function readZipEntry(path, entry, maxBytes = 4 << 20) {
+  if (entry.compSize > maxBytes || entry.size > maxBytes) throw new Error("entry too large");
+  const fd = openSync(path, "r");
+  try {
+    const header = Buffer.alloc(30);
+    readSync(fd, header, 0, 30, entry.lho);
+    if (header.readUInt32LE(0) !== 0x04034b50) throw new Error("bad local header");
+    const start = entry.lho + 30 + header.readUInt16LE(26) + header.readUInt16LE(28);
+    const data = Buffer.alloc(entry.compSize);
+    readSync(fd, data, 0, data.length, start);
+    if (entry.method === 0) return data;
+    if (entry.method === 8) return inflateRawSync(data, { maxOutputLength: maxBytes });
+    throw new Error(`unsupported zip method ${entry.method}`);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+// Browsers cannot show TGA; re-wrap raw/RLE 24/32-bit TGA pixels as a BMP.
+function tgaToBmp(tga) {
+  const type = tga[2];
+  const w = tga.readUInt16LE(12), h = tga.readUInt16LE(14);
+  const depth = tga[16], topDown = (tga[17] & 0x20) !== 0;
+  if ((type !== 2 && type !== 10) || (depth !== 24 && depth !== 32) || !w || !h || w > 2048 || h > 2048) {
+    throw new Error("unsupported tga");
+  }
+  const pp = depth / 8;
+  const cmapLen = tga[1] ? tga.readUInt16LE(5) * (tga[7] / 8) : 0;
+  const src = tga.subarray(18 + tga[0] + cmapLen);
+  let pixels = src;
+  if (type === 10) {
+    pixels = Buffer.alloc(w * h * pp);
+    let o = 0, d = 0;
+    while (o < src.length && d < pixels.length) {
+      const packet = src[o++];
+      const count = (packet & 0x7f) + 1;
+      if (packet & 0x80) {
+        for (let k = 0; k < count && d + pp <= pixels.length; k++, d += pp) src.copy(pixels, d, o, o + pp);
+        o += pp;
+      } else {
+        src.copy(pixels, d, o, o + count * pp);
+        o += count * pp; d += count * pp;
+      }
+    }
+  }
+  // BMP: BGR rows like TGA, bottom-up, each row padded to 4 bytes
+  const row = (w * 3 + 3) & ~3;
+  const bmp = Buffer.alloc(54 + row * h);
+  bmp.write("BM", 0, "latin1");
+  bmp.writeUInt32LE(bmp.length, 2);
+  bmp.writeUInt32LE(54, 10);
+  bmp.writeUInt32LE(40, 14);
+  bmp.writeInt32LE(w, 18);
+  bmp.writeInt32LE(h, 22);
+  bmp.writeUInt16LE(1, 26);
+  bmp.writeUInt16LE(24, 28);
+  bmp.writeUInt32LE(row * h, 34);
+  for (let y = 0; y < h; y++) {
+    const srcRow = topDown ? h - 1 - y : y;          // bmp row 0 = bottom
+    for (let x = 0; x < w; x++) {
+      const i = (srcRow * w + x) * pp;
+      const o = 54 + y * row + x * 3;
+      bmp[o] = pixels[i] ?? 0; bmp[o + 1] = pixels[i + 1] ?? 0; bmp[o + 2] = pixels[i + 2] ?? 0;
+    }
+  }
+  return bmp;
+}
+
+// Read one zip archive's central directory: name, method, sizes and local
+// header offset of every entry.
+function zipEntries(path) {
   const fd = openSync(path, "r");
   try {
     const size = fstatSync(fd).size;
@@ -196,17 +276,23 @@ function zipNames(path) {
     if (cdOffset > size) throw new Error("zip directory out of range");
     readSync(fd, cd, 0, cd.length, cdOffset);
 
-    const names = [];
+    const entries = [];
     let off = 0;
     for (let i = 0; i < count && off + 46 <= cd.length; i++) {
       if (cd.readUInt32LE(off) !== 0x02014b50) break;
       const nameLen = cd.readUInt16LE(off + 28);
       const extraLen = cd.readUInt16LE(off + 30);
       const commentLen = cd.readUInt16LE(off + 32);
-      names.push(cd.toString("latin1", off + 46, off + 46 + nameLen));
+      entries.push({
+        name: cd.toString("latin1", off + 46, off + 46 + nameLen),
+        method: cd.readUInt16LE(off + 10),
+        compSize: cd.readUInt32LE(off + 20),
+        size: cd.readUInt32LE(off + 24),
+        lho: cd.readUInt32LE(off + 42),
+      });
       off += 46 + nameLen + extraLen + commentLen;
     }
-    return names;
+    return entries;
   } finally {
     closeSync(fd);
   }
@@ -255,6 +341,45 @@ async function handleAdmin(request, response) {
       respond(response, 200, { game: basename(options.mapsDir), files });
     } catch (error) {
       respond(response, 500, { error: `cannot list paks: ${error && error.message || error}` });
+    }
+    return true;
+  }
+  // Public map gallery: every map in the server paks (with or without a
+  // screenshot) and what is being played right now.
+  if (url.pathname === "/maps" && request.method === "GET") {
+    const { maps, shots } = listAvailableMaps();
+    const status = await serverStatus().catch(() => null);
+    const info = status?.info ?? {};
+    respond(response, 200, {
+      maps: maps.map((name) => ({ name, shot: shots.has(name) })),
+      current: status ? {
+        mapname: String(info.mapname ?? "").toLowerCase(),
+        gametype: Number(info.g_gametype ?? 0),
+        players: status.players.length,
+        maxclients: Number(info.sv_maxclients ?? 0),
+        hostname: info.sv_hostname ?? "",
+      } : null,
+    });
+    return true;
+  }
+  // GET /levelshot/<map>: the map's screenshot straight out of its pk3
+  // (jpg as-is, tga converted to bmp).
+  const shotPath = /^\/levelshot\/([\w.-]{1,64})$/.exec(url.pathname);
+  if (shotPath && request.method === "GET") {
+    const shot = listAvailableMaps().shots.get(shotPath[1].toLowerCase());
+    if (!shot) return respond(response, 404, { error: "no levelshot" }), true;
+    try {
+      let body = readZipEntry(shot.path, shot.entry);
+      let type = "image/jpeg";
+      if (shot.type === "tga") { body = tgaToBmp(body); type = "image/bmp"; }
+      response.writeHead(200, {
+        "content-type": type,
+        "content-length": body.length,
+        "cache-control": "public, max-age=3600",
+      });
+      response.end(body);
+    } catch (error) {
+      respond(response, 500, { error: `levelshot: ${error && error.message || error}` });
     }
     return true;
   }

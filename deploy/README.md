@@ -134,6 +134,11 @@ asks the gateway (`/paks`) for that same list, so browsers download the new
 maps too (cached after the first time). The admin panel's map list picks them
 up within a minute.
 
+Both the launcher (below the server picker) and the admin panel (Game card)
+show a map gallery with each map's `levelshots/<map>.jpg|tga` screenshot,
+served by the gateway at `/levelshot/<map>`; the map being played is marked.
+In the admin panel, click a screenshot to select it, then **Load Map**.
+
 Play them via the admin panel (Map card), `callvote map <name>` in-game, or
 the rotation in `server/defaults/baseq3.cfg` / `Q3JS_SERVER_CONFIG`. The map
 name is the `maps/<name>.bsp` inside the pk3, not the pk3's file name
