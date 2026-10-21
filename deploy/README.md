@@ -156,6 +156,20 @@ name is the `maps/<name>.bsp` inside the pk3, not the pk3's file name
 (`unzip -Z1 file.pk3 | grep bsp`). Maps without a `.aas` file have no bot
 navigation, so bots stand still there.
 
+## Game-mode presets
+
+The admin panel's *Game mode* card switches the whole server with one click:
+**Free for all**, **Team deathmatch**, **Capture the flag** or **Duel**. Each
+sets the gametype and its limits, builds a map rotation (`d1`…`dN` vstr chain,
+up to 16 maps) from the maps in the server paks, and loads the first map.
+**edit maps** picks a mode's rotation yourself — tick maps in play order,
+custom maps included; the choice is saved in `PRESETS_FILE` (all-in-one:
+`/state/gateway/presets.json`, split stack: the `gateway-state` volume).
+Without a saved list, FFA/TDM use your custom maps first and then the stock
+DM maps, CTF the `q3ctf*` / `*_ctf` maps, Duel the tourney maps. **Next Map**
+advances the rotation. The mode lasts until the server restarts (then the
+config defaults apply again).
+
 ## Leaderboard
 
 `/stats.html` (linked from the launcher and admin panel) shows frags,

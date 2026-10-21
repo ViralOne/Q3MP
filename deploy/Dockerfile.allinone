@@ -44,7 +44,7 @@ FROM node:24-bookworm-slim AS gateway
 WORKDIR /app
 COPY deploy/gateway/package.json deploy/gateway/package-lock.json ./
 RUN npm ci --omit=dev --silent
-COPY deploy/gateway/gateway.mjs deploy/gateway/master-heartbeat.mjs deploy/gateway/stats.mjs ./
+COPY deploy/gateway/gateway.mjs deploy/gateway/master-heartbeat.mjs deploy/gateway/stats.mjs deploy/gateway/presets.mjs ./
 
 # --- caddy binary -------------------------------------------------------------
 FROM caddy:2 AS caddy

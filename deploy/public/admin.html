@@ -29,6 +29,25 @@
   #st { font-size:12px; color:#999; min-height:16px; }
   .kv { color:#999; font-size:12px; }
   .kv b { color:#ddd; font-weight:400; }
+  /* game-mode presets */
+  .presetGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px; margin-bottom:8px; }
+  .preset { background:#0a0a0a; border:1px solid #333; border-radius:3px; padding:10px 12px; text-align:left;
+    text-transform:none; letter-spacing:0; color:#ddd; display:flex; flex-direction:column; gap:4px; }
+  .preset:hover:not(:disabled) { border-color:#777; }
+  .preset.active { border-color:#d94a36; }
+  .preset b { font-size:13px; font-weight:700; }
+  .preset span { font-size:11px; color:#999; line-height:1.4; }
+  .preset:disabled { background:#0a0a0a; color:#666; }
+  .presetCard { display:flex; flex-direction:column; gap:4px; }
+  .presetCard .preset { flex:1; }
+  .presetCard .edit { padding:3px 8px; font-size:11px; align-self:flex-start; }
+  #presetEditor { border:1px solid #333; border-radius:3px; padding:10px 12px; margin-bottom:10px; background:#0a0a0a; }
+  #presetEditor[hidden] { display:none; }
+  .peMaps { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:4px 12px;
+    max-height:260px; overflow:auto; }
+  .peMaps label { display:flex; gap:6px; align-items:center; font-size:12px; color:#ccc; cursor:pointer; }
+  .peMaps input { accent-color:#d94a36; }
+  .peMaps .n { color:#d94a36; min-width:1.6em; font-size:11px; }
   /* map gallery: click a levelshot to pick the map */
   #mapGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(112px, 1fr)); gap:8px;
     max-height:340px; overflow:auto; margin-bottom:10px; padding-right:4px; }
@@ -72,13 +91,30 @@
 </div>
 
 <div class="card">
+  <h2>Game mode</h2>
+  <div id="presets" class="presetGrid"></div>
+  <div id="presetEditor" hidden>
+    <div class="row" style="justify-content:space-between">
+      <span class="kv" id="peTitle"></span>
+      <span class="row" style="margin:0">
+        <button id="peSave">Save rotation</button>
+        <button class="ghost" id="peReset" title="forget the saved list and use this mode's default maps">Reset to defaults</button>
+        <button class="ghost" id="peCancel">Cancel</button>
+      </span>
+    </div>
+    <div id="peMaps" class="peMaps"></div>
+  </div>
+  <div class="kv" id="presetState" style="font-size:12px">one click sets the gametype, limits and a map rotation from this server's maps, then loads the first map (everyone reconnects for a moment)</div>
+</div>
+
+<div class="card">
   <h2>Game</h2>
   <div class="row">
     <label class="kv" for="mapSearch">Map:</label>
     <input id="mapSearch" size="12" spellcheck="false" placeholder="filter…">
     <select id="map" style="max-width:260px"><option value="">— pick a map —</option></select>
     <button class="ghost" data-cmd="map %map%">Load Map</button>
-    <button class="ghost" data-cmd="nextmap">Next Map</button>
+    <button class="ghost" data-cmd="vstr nextmap" title="advance the map rotation">Next Map</button>
     <button class="ghost" data-cmd="map_restart">Restart Round</button>
   </div>
   <div class="kv" id="mapInfo" style="font-size:12px;margin-bottom:8px">loading the map list from the server paks…</div>
@@ -457,6 +493,120 @@ function escapeHtml(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+// --- game-mode presets (gateway /admin/api/presets) -----------------------------
+
+let presetData = null;
+let editing = null;           // preset being edited
+let editOrder = [];           // its rotation, in play order
+
+async function loadPresets() {
+  try {
+    const response = await fetch('/admin/api/presets');
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { $('presetState').textContent = body.error || `HTTP ${response.status}`; return; }
+    presetData = body;
+    $('presets').replaceChildren(...body.presets.map((p) => {
+      const card = document.createElement('div');
+      card.className = 'presetCard';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'preset' + (body.active && body.active.id === p.id ? ' active' : '');
+      b.disabled = !p.maps.length;
+      b.title = p.maps.length ? `rotation: ${p.maps.join(' → ')}` : 'no maps for this mode in the server paks';
+      b.innerHTML = `<b>${escapeHtml(p.name)}</b><span>${escapeHtml(p.description)}</span>` +
+        `<span>${p.maps.length ? `${p.maps.length} maps${p.custom ? ' (your list)' : ''} · starts on ${escapeHtml(p.maps[0])}` : 'no maps available'}</span>`;
+      b.addEventListener('click', () => applyPreset(p));
+      const e = document.createElement('button');
+      e.type = 'button';
+      e.className = 'ghost edit';
+      e.textContent = 'edit maps';
+      e.addEventListener('click', () => openEditor(p));
+      card.append(b, e);
+      return card;
+    }));
+    if (body.active) $('presetState').textContent = `active: ${body.active.name} (set ${new Date(body.active.at).toLocaleTimeString()})`;
+  } catch (e) {
+    $('presetState').textContent = 'presets failed: ' + (e && e.message || e);
+  }
+}
+
+// rotation editor: tick maps in the order they should be played
+function openEditor(p) {
+  editing = p;
+  editOrder = [...p.maps];
+  $('presetEditor').hidden = false;
+  renderEditor();
+}
+
+function renderEditor() {
+  const max = presetData.rotationMax;
+  $('peTitle').textContent = `${editing.name}: ${editOrder.length}/${max} maps — tick them in play order`;
+  $('peMaps').replaceChildren(...presetData.available.map((m) => {
+    const label = document.createElement('label');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = editOrder.includes(m);
+    box.disabled = !box.checked && editOrder.length >= max;
+    box.addEventListener('change', () => {
+      editOrder = box.checked ? [...editOrder, m] : editOrder.filter((x) => x !== m);
+      renderEditor();
+    });
+    const n = document.createElement('span');
+    n.className = 'n';
+    n.textContent = editOrder.includes(m) ? String(editOrder.indexOf(m) + 1) : '';
+    label.append(box, n, document.createTextNode(m));
+    return label;
+  }));
+}
+
+async function saveRotation(maps) {
+  if (!$('pw').value) { $('presetState').textContent = 'unlock with the password first'; return; }
+  const response = await fetch(`/admin/api/presets/${editing.id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: $('pw').value, maps }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) { $('presetState').textContent = body.error || `HTTP ${response.status}`; return; }
+  $('presetState').textContent = maps.length
+    ? `${editing.name}: saved ${maps.length} maps — applies the next time this mode is picked`
+    : `${editing.name}: back to the default maps`;
+  $('presetEditor').hidden = true;
+  await loadPresets();
+}
+
+$('peSave').addEventListener('click', () => {
+  if (!editOrder.length) { $('presetState').textContent = 'tick at least one map (or Reset to defaults)'; return; }
+  saveRotation(editOrder);
+});
+$('peReset').addEventListener('click', () => saveRotation([]));
+$('peCancel').addEventListener('click', () => { $('presetEditor').hidden = true; });
+
+async function applyPreset(p) {
+  if (!$('pw').value) { $('presetState').textContent = 'unlock with the password first'; return; }
+  if (!confirm(`Switch to ${p.name}? The map reloads and everyone reconnects for a moment.`)) return;
+  $('presetState').textContent = `switching to ${p.name}…`;
+  for (const b of $('presets').children) b.disabled = true;
+  try {
+    const response = await fetch('/admin/api/preset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: $('pw').value, id: p.id }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      $('presetState').textContent = body.error || `HTTP ${response.status}`;
+      out(`> preset ${p.id}\nERROR: ${body.error || response.status}`);
+    } else {
+      out(`> preset ${p.id}\n${body.commands.join('\n')}\n${body.output}`);
+    }
+  } catch (e) {
+    $('presetState').textContent = 'switch failed: ' + (e && e.message || e);
+  }
+  await loadPresets();
+  setTimeout(refresh, 2500);
+}
+
 // --- map pk3 upload / delete (gateway /admin/api/paks) ----------------------------
 
 function fmtSize(n) {
@@ -545,6 +695,7 @@ setInterval(refresh, 5000);
 refresh();
 loadMapList();
 loadPaks();
+loadPresets();
 </script>
 </body>
 </html>

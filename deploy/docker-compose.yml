@@ -33,6 +33,8 @@ services:
       TARGET_HOST: q3ded
       TARGET_PORT: "27960"
       STATS_LOG: "/state/baseq3/games.log"
+      # admin-chosen map lists per game mode (the server-state mount is read-only)
+      PRESETS_FILE: "/gateway-state/presets.json"
       MAX_CONNECTIONS: "64"
       # Validated against incoming /admin/api requests; must match the server.
       RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD (admin panel / rcon password)}"
@@ -48,6 +50,7 @@ services:
       - ./quake3-data:/data:ro
       # the server's games.log, for the /stats leaderboard
       - server-state:/state:ro
+      - gateway-state:/gateway-state
     depends_on:
       - q3ded
     restart: unless-stopped
@@ -72,5 +75,6 @@ services:
 
 volumes:
   server-state:
+  gateway-state:
   caddy_data:
   caddy_config:

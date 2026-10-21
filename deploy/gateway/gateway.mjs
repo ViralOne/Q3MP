@@ -19,6 +19,7 @@
 //   GAME_DATA_DIR   served game dir: map list, levelshots, admin pk3 uploads (default /data/baseq3)
 //   MAX_UPLOAD_MB   largest map pk3 the admin panel may upload (default 300)
 //   STATS_LOG       games.log the /stats leaderboard is built from (see stats.mjs)
+//   PRESETS_FILE    where admin-chosen game-mode map lists are saved (see presets.mjs)
 //   Q3JS_MASTER_URL master registry serving GET /api/servers for the launcher
 //                   server list relay (default https://master.q3js.com);
 //                   also the heartbeat target used by master-heartbeat.mjs
@@ -33,6 +34,7 @@ import { WebSocketServer } from "ws";
 
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
 import { startStats, statsSnapshot } from "./stats.mjs";
+import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax } from "./presets.mjs";
 
 const env = (name, fallback) => process.env[name] || fallback;
 const num = (name, fallback) => {
@@ -121,8 +123,14 @@ function parseStatus(blobs) {
   return status;
 }
 
+// The server rate-limits out-of-band queries per address (burst 10, then
+// 1/s, shared with rcon), so pages polling /maps or the admin status share
+// one answer for a couple of seconds.
+let statusCache = { at: 0, promise: null };
 function serverStatus() {
-  return udpQuery(OOB("getstatus"), 700).then(parseStatus);
+  if (statusCache.promise && Date.now() - statusCache.at < 2000) return statusCache.promise;
+  statusCache = { at: Date.now(), promise: udpQuery(OOB("getstatus"), 700).then(parseStatus) };
+  return statusCache.promise;
 }
 
 // rcon: the Q3 server answers print packets on the same socket.
@@ -138,6 +146,32 @@ async function rconCommand(command) {
     .join("");
   return { command, output: text || "(no response)" };
 }
+
+// Several rcon commands in a row. The server answers every accepted rcon
+// with a print packet but silently drops requests over its per-address rate
+// limit (burst 10, then 1/s), so a command without a reply is retried after
+// the bucket has leaked a slot.
+async function rconBatch(commands) {
+  const outputs = [];
+  for (let i = 0; i < commands.length; i++) {
+    const last = i === commands.length - 1;
+    const payload = Buffer.from(
+      "\xff\xff\xff\xffrcon " + options.rconPassword + " " + commands[i] + "\n",
+      "latin1",
+    );
+    let prints = [];
+    for (let attempt = 0; attempt < 4 && !prints.length; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 1100));
+      const replies = await udpQuery(payload, last ? 1500 : 300);
+      prints = replies.filter((r) => r.startsWith("\xff\xff\xff\xffprint"));
+    }
+    if (!prints.length) throw new Error(`no reply to "${commands[i]}" (rate limit or server down)`);
+    outputs.push(prints.map((r) => r.split("\n").slice(1).join("\n")).join(""));
+  }
+  return outputs;
+}
+
+let activePreset = null;
 
 function authorized(body) {
   if (!options.rconPassword) return false;
@@ -555,6 +589,55 @@ async function handleAdmin(request, response) {
         return true;
       }
       return respond(response, 405, { error: "method not allowed" }), true;
+    }
+    if (url.pathname === "/admin/api/presets" && request.method === "GET") {
+      const { maps } = listAvailableMaps();
+      respond(response, 200, {
+        presets: presetList(maps),
+        active: activePreset,
+        available: [...maps].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+        rotationMax,
+      });
+      return true;
+    }
+    // PUT {password, maps:[...]} replaces a preset's rotation; [] = defaults
+    const presetEdit = /^\/admin\/api\/presets\/([\w-]{1,32})$/.exec(url.pathname);
+    if (presetEdit && request.method === "PUT") {
+      const body = await readBody(request);
+      if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
+      try {
+        savePresetMaps(presetEdit[1], body.maps, listAvailableMaps().maps);
+      } catch (error) {
+        return respond(response, error.status || 500, { error: String(error.message || error) }), true;
+      }
+      respond(response, 200, { presets: presetList(listAvailableMaps().maps) });
+      return true;
+    }
+    if (url.pathname === "/admin/api/preset" && request.method === "POST") {
+      const body = await readBody(request);
+      if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
+      const preset = PRESETS.find((p) => p.id === body.id);
+      if (!preset) return respond(response, 404, { error: `unknown preset ${body.id}` }), true;
+      let plan;
+      try {
+        plan = presetCommands(preset, listAvailableMaps().maps);
+      } catch (error) {
+        return respond(response, 409, { error: String(error.message || error) }), true;
+      }
+      let outputs;
+      try {
+        outputs = await rconBatch(plan.commands);
+      } catch (error) {
+        return respond(response, 502, { error: String(error.message || error) }), true;
+      }
+      activePreset = { id: preset.id, name: preset.name, at: Date.now() };
+      respond(response, 200, {
+        preset: activePreset,
+        maps: plan.maps,
+        commands: plan.commands,
+        output: outputs[outputs.length - 1] || "(no response)",
+      });
+      return true;
     }
     if (url.pathname === "/admin/api/rcon" && request.method === "POST") {
       const body = await readBody(request);
