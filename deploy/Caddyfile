@@ -16,6 +16,12 @@
 		reverse_proxy gateway:8080
 	}
 
+	# launcher server picker: relay of the Q3JS master's community list
+	@master_servers path /servers
+	handle @master_servers {
+		reverse_proxy gateway:8080
+	}
+
 	handle_path /assets/* {
 		root * /srv/data
 		file_server

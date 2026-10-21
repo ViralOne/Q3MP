@@ -16,6 +16,9 @@
 //   MAX_BUFFERED_BYTES  server->client frame drops beyond this backpressure (default 1048576)
 //   IDLE_TIMEOUT_MS  close connection keys idle for this long (default 120000)
 //   RCON_PASSWORD   shared secret for the /admin/api endpoints (empty = admin API off)
+//   Q3JS_MASTER_URL master registry serving GET /api/servers for the launcher
+//                   server list relay (default https://master.q3js.com);
+//                   also the heartbeat target used by master-heartbeat.mjs
 
 import { createServer } from "node:http";
 import { createSocket } from "node:dgram";
@@ -36,6 +39,9 @@ const options = {
   gatewayPort: num("GATEWAY_PORT", 8080),
   targetHost: env("TARGET_HOST", "127.0.0.1"),
   targetPort: num("TARGET_PORT", 27960),
+  // Live server list relayed to the launcher (GET /servers); same registry
+  // the master heartbeat registers this server with.
+  masterListUrl: env("Q3JS_MASTER_URL", "https://master.q3js.com").replace(/\/+$/, ""),
   maxConnections: num("MAX_CONNECTIONS", 64),
   maxPacketBytes: num("MAX_PACKET_BYTES", 1400),
   maxBufferedBytes: num("MAX_BUFFERED_BYTES", 1_048_576),
@@ -236,6 +242,19 @@ async function handleAdmin(request, response) {
     });
     return true;
   }
+  // Public relay of the Q3JS master's community server list, used by the
+  // launcher's server picker (the master itself does not send CORS headers).
+  if (url.pathname === "/servers" && request.method === "GET") {
+    try {
+      const { data, age } = await masterServers();
+      respond(response, 200, { servers: data, age });
+    } catch (error) {
+      respond(response, 502, {
+        error: `master server list unavailable: ${error && error.message || error}`,
+      });
+    }
+    return true;
+  }
   if (!url.pathname.startsWith("/admin/api/")) return false;
   if (!options.rconPassword) {
     respond(response, 503, { error: "admin api disabled (no RCON_PASSWORD)" });
@@ -278,6 +297,46 @@ async function handleAdmin(request, response) {
 function respond(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+// GET /servers relay with a short cache so the launcher home page can render
+// the picker from a single request while heartbeats keep the list live.
+const Q3JS_LIST_CACHE_MS = 5000;
+let masterList = { promise: null, data: null, at: 0, hasData: false };
+
+async function masterServers() {
+  const fresh = masterList.hasData && (Date.now() - masterList.at) < Q3JS_LIST_CACHE_MS;
+  if (fresh) {
+    return { data: masterList.data, age: Math.round((Date.now() - masterList.at) / 1000) };
+  }
+  if (!masterList.promise) {
+    masterList.promise = (async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const url = new URL("/api/servers", options.masterListUrl);
+        const response = await fetch(url, {
+          headers: { accept: "application/json" },
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+        masterList.data = await response.json();
+        masterList.hasData = true;
+        masterList.at = Date.now();
+      } catch (error) {
+        if (!masterList.hasData) throw error;
+        console.error(`[servers] master list refresh failed, serving cached copy: ${error && error.message || error}`);
+      } finally {
+        clearTimeout(timeout);
+        masterList.promise = null;
+      }
+    })();
+  }
+  await masterList.promise;
+  return {
+    data: masterList.data,
+    age: masterList.hasData ? Math.round((Date.now() - masterList.at) / 1000) : null,
+  };
 }
 
 const socketServer = new WebSocketServer({

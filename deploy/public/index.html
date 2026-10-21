@@ -13,6 +13,7 @@
   .panel h1 { font-size:26px; font-weight:700; letter-spacing:2px; color:#d94a36; margin:0;
     text-transform:uppercase; }
   #login .field { display:flex; gap:8px; }
+  #login #serverField { width: min(360px, 82vw); }
   #login input { background:#141414; border:1px solid #444; color:#eee; font:inherit;
     padding:10px 14px; width:min(260px, 60vw); border-radius:3px; outline-color:#d94a36; }
   #login select { background:#141414; border:1px solid #444; color:#eee; font:inherit;
@@ -54,6 +55,10 @@
     <canvas id="modelPreview" width="64" height="64" title="character preview"></canvas>
     <select id="model" title="Character"></select>
   </div>
+  <div class="field" id="serverField">
+    <select id="server" title="Game server to join"></select>
+  </div>
+  <div class="hint" id="serverHint">loading server list…</div>
   <div class="hint">name is remembered · pk3 downloads are cached <a id="clearCache" href="#">(clear)</a> · <a href="admin.html">server admin</a></div>
 </div>
 <div class="panel" id="bootNew" style="display:none">
@@ -407,6 +412,125 @@ async function updatePreview() {
 modelInput.addEventListener('change', updatePreview);
 updatePreview();
 
+// ------------------------------------------------------------ server picker
+// The Q3JS master's community server list (this stack's gateway relays it at
+// /servers) — pick any listed server and Play joins it. Your own stack stays
+// the default first entry. A direct ?server=/?connect= link bypasses the
+// picker entirely.
+const serverSelect = document.getElementById('server');
+const serverHint = document.getElementById('serverHint');
+const serverField = document.getElementById('serverField');
+const directServer = Boolean(params.get('server') || params.get('connect'));
+
+const gametypeName = (n) => ({ 0: 'FFA', 1: 'duel', 3: 'CTF', 4: 'TDM' }[n] ?? `type ${n}`);
+const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+
+// Which maps this browser can actually load: basenames of every maps/*.bsp in
+// the pk3s we download, indexed once via small HTTP range requests against the
+// zip central directories.
+let mapSets = null;
+async function mapSet() {
+  if (mapSets) return mapSets;
+  const names = new Set();
+  await Promise.all(files.map(async (rel) => {
+    try {
+      const url = new URL(rel, new URL(dataBase, location.href)).href;
+      for (const n of await zipMapNames(url)) names.add(n);
+    } catch (e) {
+      console.error(`map index ${rel}: ${e && e.message || e}`);
+    }
+  }));
+  mapSets = names;
+  return names;
+}
+
+async function zipMapNames(url) {
+  const head = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+  if (!head.ok) throw new Error(`HTTP ${head.status}`);
+  const size = +head.headers.get('content-length') || 0;
+  if (!size) throw new Error('unknown size');
+  const tail = new Uint8Array(await range(url, Math.max(0, size - (1 << 16)), size - 1));
+  const tv = new DataView(tail.buffer);
+  let eocd = -1;
+  for (let i = tv.byteLength - 22; i >= 0; i--) {
+    if (tv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('zip EOCD not found');
+  const cdOffset = tv.getUint32(eocd + 16, true);
+  const cdSize = tv.getUint32(eocd + 12, true);
+  const cd = new Uint8Array(await range(url, cdOffset, cdOffset + cdSize - 1));
+  const cv = new DataView(cd.buffer);
+  const out = [];
+  let p = 0;
+  while (p + 46 <= cd.length && cv.getUint32(p, true) === 0x02014b50) {
+    const nameLen = cv.getUint16(p + 28, true);
+    const extraLen = cv.getUint16(p + 30, true);
+    const commentLen = cv.getUint16(p + 32, true);
+    const name = new TextDecoder().decode(cd.subarray(p + 46, p + 46 + nameLen));
+    if (/^maps\/[^/]+\.bsp$/i.test(name)) {
+      out.push(name.replace(/^maps\//i, '').replace(/\.bsp$/i, ''));
+    }
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return out;
+}
+
+// Called after the maps are indexed; the second pass marks joinability.
+function serverOption(s, haveMap) {
+  const info = s.info || {};
+  const host = s.host || info.host || '?';
+  const count = `${info.users ?? info.players ?? 0}/${info.sv_maxclients || '?'}`;
+  const ping = info.ping != null ? ` ~${info.ping}ms` : '';
+  const own = (host === location.hostname && s.proxyPort === 443) ? ' (this server)' : '';
+  const label = `${trunc(host, 24)}${own} — ${info.mapname || '?'} · ${gametypeName(info.g_gametype)} · ${count}${ping}`;
+  const opt = document.createElement('option');
+  opt.value = [host, s.proxyPort, info.targetPort ?? s.targetPort, s.secure ? 1 : 0].join('|');
+  opt.textContent = label;
+  if (info.g_needpass) {
+    opt.disabled = true;
+    opt.textContent += ' · passworded';
+  } else if ((info.fs_game && info.fs_game !== info.gamename)) {
+    opt.disabled = true;                       // mod pk3s we do not host
+    opt.textContent += ` · needs ${trunc(info.fs_game, 12)} mod`;
+  } else if (haveMap && info.mapname && !haveMap.has(info.mapname)) {
+    opt.disabled = true;                       // map not in our download set
+    opt.textContent += ' · map not available';
+  }
+  return opt;
+}
+
+async function refreshServers() {
+  if (directServer) {
+    serverField.style.display = 'none';
+    serverHint.style.display = 'none';
+    return;
+  }
+  try {
+    const r = await fetch('/servers', { cache: 'no-store' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const { servers } = await r.json();
+    const listed = (Array.isArray(servers) ? servers : [])
+      .filter((s) => s && s.host)
+      .sort((a, b) => (b.official - a.official) || ((b.info?.users ?? 0) - (a.info?.users ?? 0)));
+    const haveMap = await mapSet();
+    serverSelect.replaceChildren(localOption(), ...listed.map((s) => serverOption(s, haveMap)));
+    serverHint.textContent = 'pick a server — grayed ones need extra pk3s this site does not host';
+  } catch (e) {
+    serverHint.textContent = `server list unavailable (${e && e.message || e}) — joining this server`;
+  }
+}
+
+// The always-available first entry: this stack's own gateway/server.
+function localOption() {
+  const opt = document.createElement('option');
+  opt.value = '';
+  opt.selected = true;
+  opt.textContent = `this server (${location.hostname || connectAddress})`;
+  return opt;
+}
+
+refreshServers();
+
 playBtn.addEventListener('click', start);
 nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') start(); });
 
@@ -561,6 +685,21 @@ async function start() {
   playBtn.disabled = true;
   nameInput.disabled = true;
   modelInput.disabled = true;
+  serverSelect.disabled = true;
+
+  // Which stack to join: a direct ?server=/?connect= link wins; otherwise the
+  // picker's selection, falling back to this stack for the default entry.
+  let useGateway = gatewayUrl;
+  let useConnect = connectAddress;
+  if (!directServer) {
+    const pick = (serverSelect.value || '').split('|');
+    if (pick.length === 4 && pick[0]) {
+      const [host, proxyPort, targetPort, secure] = pick;
+      useGateway = `${secure === '1' ? 'wss' : 'ws'}://${host}:${proxyPort}/ws`;
+      useConnect = `${host}:${targetPort}`;
+      logLine(`joining ${host} — udp ${useConnect} via ${useGateway}`);
+    }
+  }
   // keep the browser-side log overlay out of the way once the game takes over;
   // F1 or the "logs" button bring it back
   logBox.classList.remove('show');
@@ -635,10 +774,10 @@ async function loadGame(playerName, playerModel) {
       '+set', 'name', playerName,
       '+set', 'model', playerModel,
       '+set', 'in_wheelPx', String(wheelPx),
-      '+connect', connectAddress,
+      '+connect', useConnect,
     ],
     locateFile: (file) => new URL(file, location.href).href,
-    websocket: { url: gatewayUrl, subprotocol: 'binary' },
+    websocket: { url: useGateway, subprotocol: 'binary' },
     onAbort: (reason) => fail('engine aborted: ' + reason),
     preRun: [async (module) => {
       module.addRunDependency('setup-fs');

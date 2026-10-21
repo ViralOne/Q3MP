@@ -178,6 +178,15 @@ anyone who knows the password could otherwise use the panel.
   sensitive). It takes effect immediately and is remembered per browser
   (localStorage + the engine's archived config). The wheel cycles every owned
   weapon slot in one step, including empty-ammo guns.
+- **Server picker**: the launcher home page lists the live community servers
+  registered on the Q3JS master (relayed by this gateway at `/servers`).
+  `Play` joins the selected server — your own stack is the default first
+  option, and the launcher applies `wss://<host>:<proxyPort>/ws` plus the
+  listed UDP port per entry. Grayed-out rows are unjoinable from this site
+  because they need content it does not host: a different `fs_game` mod, a
+  password, or a map whose `.bsp` is missing from the local pk3 set (checked
+  against the paks' central directories). A `?server=`/`?connect=` link still
+  overrides the picker directly.
 - **Score keep**: `g_scoreKeep 1` (default) preserves each player's score
   across disconnects until the map changes — reconnect and continue where you
   left off. Stashes are keyed by netname, max 32 per map.
