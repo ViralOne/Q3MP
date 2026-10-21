@@ -16,8 +16,12 @@
   #login input { background:#141414; border:1px solid #444; color:#eee; font:inherit;
     padding:10px 14px; width:min(260px, 60vw); border-radius:3px; outline-color:#d94a36; }
   #login select { background:#141414; border:1px solid #444; color:#eee; font:inherit;
-    padding:10px 12px; flex:0 1 120px; min-width:0; border-radius:3px; }
+    padding:10px 12px; min-width:0; flex:1; border-radius:3px; }
   #login select:disabled { opacity:.5; }
+  #login .previewRow { display:flex; align-items:center; gap:10px; margin-top:10px; }
+  #modelPreview { width:64px; height:64px; flex:0 0 64px; image-rendering:pixelated;
+    background:#0d0d0d; border:1px solid #333; border-radius:3px; display:none; }
+  #modelPreview.has { display:block; }
   #login button { background:#d94a36; border:0; color:#fff; font:inherit; padding:10px 22px;
     cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
   #login button:disabled { background:#552; color:#996; cursor:default; }
@@ -44,8 +48,11 @@
   <h1>Quake III Arena</h1>
   <div class="field">
     <input id="name" maxlength="16" placeholder="Player name" autocomplete="off" spellcheck="false">
-    <select id="model" title="Character"></select>
     <button id="playBtn">Play</button>
+  </div>
+  <div class="previewRow">
+    <canvas id="modelPreview" width="64" height="64" title="character preview"></canvas>
+    <select id="model" title="Character"></select>
   </div>
   <div class="hint">name is remembered · pk3 downloads are cached <a id="clearCache" href="#">(clear)</a> · <a href="admin.html">server admin</a></div>
 </div>
@@ -176,6 +183,156 @@ for (const m of models) {
 }
 const savedModel = localStorage.getItem(modelKey);
 if (savedModel && models.includes(savedModel)) modelInput.value = savedModel;
+
+// ------------------------------------------------------------- character preview
+// Shows the retail "icon_default.tga" that ships for every player model in
+// pak0. Rather than downloading the whole pak, the icon is pulled out with two
+// small HTTP range requests (zip central directory, then the entry itself), so
+// it works before the paks are cached. TGA files are decoded by hand — most
+// Q3 icons are raw or RLE 24/32-bit images.
+
+const previewCanvas = document.getElementById('modelPreview');
+let pakIndex = null;          // filename -> {method, compSize, offset}
+let pakIndexPromise = null;
+
+const pakUrl = () => new URL('baseq3/pak0.pk3', new URL(dataBase, location.href)).href;
+
+function range(url, start, end) {
+  return fetch(url, { headers: { Range: `bytes=${start}-${end}` }, cache: 'no-store' })
+    .then((r) => r.arrayBuffer());
+}
+
+async function loadPakIndex() {
+  if (pakIndex) return pakIndex;
+  if (pakIndexPromise) return pakIndexPromise;
+  pakIndexPromise = (async () => {
+    const url = pakUrl();
+    const head = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+    if (!head.ok) throw new Error(`pak0: HTTP ${head.status}`);
+    const size = +head.headers.get('content-length') || 0;
+    if (!size) throw new Error('pak0: unknown size');
+
+    // find the end-of-central-directory record in the last 64 kB
+    const tail = new Uint8Array(await range(url, Math.max(0, size - (1 << 16)), size - 1));
+    const tv = new DataView(tail.buffer);
+    let eocd = -1;
+    for (let i = tv.byteLength - 22; i >= 0; i--) {
+      if (tv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('pak0: zip EOCD not found');
+    const cdOffset = tv.getUint32(eocd + 16, true);
+    const cdSize = tv.getUint32(eocd + 12, true);
+
+    // pull exactly the central directory and index it
+    const cd = new Uint8Array(await range(url, cdOffset, cdOffset + cdSize - 1));
+    const cv = new DataView(cd.buffer);
+    const index = {};
+    let p = 0;
+    while (p + 46 <= cd.length && cv.getUint32(p, true) === 0x02014b50) {
+      const method = cv.getUint16(p + 10, true);
+      const compSize = cv.getUint32(p + 20, true);
+      const lho = cv.getUint32(p + 42, true);
+      const nameLen = cv.getUint16(p + 28, true);
+      const extraLen = cv.getUint16(p + 30, true);
+      const commentLen = cv.getUint16(p + 32, true);
+      const name = new TextDecoder().decode(cd.subarray(p + 46, p + 46 + nameLen));
+      index[name] = { method, compSize, lho };
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    pakIndex = index;
+    return index;
+  })().catch((e) => { pakIndexPromise = null; throw e; });
+  return pakIndexPromise;
+}
+
+async function gunzipRaw(buf) {
+  const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function pakFile(path) {
+  const index = await loadPakIndex();
+  const entry = index[path];
+  if (!entry) throw new Error(`pak0: no ${path}`);
+  const url = pakUrl();
+  // local header (30 bytes) to find where the raw data begins
+  const lh = new DataView(await range(url, entry.lho, entry.lho + 29));
+  if (lh.getUint32(0, true) !== 0x04034b50) throw new Error('pak0: bad local header');
+  const dataStart = entry.lho + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+  const data = new Uint8Array(await range(url, dataStart, dataStart + entry.compSize - 1));
+  return entry.method === 8 ? gunzipRaw(data) : data;
+}
+
+function drawTga(canvas, data) {
+  const type = data[2];				// 2 = raw, 10 = RLE
+  if (type !== 2 && type !== 10) return false;
+  const view = new DataView(data.buffer, data.byteOffset);
+  const w = view.getUint16(12, true), h = view.getUint16(14, true);
+  const depth = data[16], desc = data[17];
+  if ((depth !== 24 && depth !== 32) || w > 512 || h > 512) return false;
+  const pp = depth / 8;
+  const cmapLen = data[1] ? view.getUint16(5, true) * (data[7] / 8) : 0;
+  let src = data.subarray(18 + data[0] + cmapLen);
+
+  // type 10 = run-length encoded
+  let pixels;
+  if (type === 10) {
+    pixels = new Uint8Array(w * h * pp);
+    let o = 0, d = 0;
+    while (o < src.length && d < pixels.length) {
+      const packet = src[o++];
+      const count = (packet & 0x7f) + 1;
+      if (packet & 0x80) {
+        for (let k = 0; k < count && d + pp <= pixels.length; k++, d += pp) {
+          pixels.set(src.subarray(o, o + pp), d);
+        }
+        o += pp;
+      } else {
+        const run = count * pp;
+        pixels.set(src.subarray(o, o + run), d);
+        o += run; d += run;
+      }
+    }
+  } else {
+    pixels = src;
+  }
+
+  const image = new ImageData(w, h);
+  // TGA pixels are BGR(A); descriptor bit 0x20 = top-down rows
+  for (let y = 0; y < h; y++) {
+    const srcY = (desc & 0x20) ? y : h - 1 - y;
+    for (let x = 0; x < w; x++) {
+      const i = (srcY * w + x) * pp;
+      const o = (y * w + x) * 4;
+      image.data[o] = pixels[i + 2];
+      image.data[o + 1] = pixels[i + 1];
+      image.data[o + 2] = pixels[i];
+      image.data[o + 3] = pp === 4 ? pixels[i + 3] : 255;
+    }
+  }
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').putImageData(image, 0, 0);
+  return true;
+}
+
+let previewFor = '';
+async function updatePreview() {
+  const model = modelInput.value || 'sarge';
+  if (model === previewFor) return;
+  previewFor = model;
+  const canvas = previewCanvas;
+  canvas.classList.remove('has');
+  try {
+    const data = await pakFile(`models/players/${model}/icon_default.tga`);
+    if (previewFor !== model) return; // user switched away meanwhile
+    if (drawTga(canvas, data)) canvas.classList.add('has');
+  } catch (e) {
+    console.error('preview:', e && e.message || e);
+  }
+}
+
+modelInput.addEventListener('change', updatePreview);
+updatePreview();
 
 // WebSocket gateway URL. The Emscripten UDP socket layer talks to it with one
 // binary frame per Quake 3 datagram.
@@ -357,6 +514,9 @@ async function start() {
   playBtn.disabled = true;
   nameInput.disabled = true;
   modelInput.disabled = true;
+  // keep the browser-side log overlay out of the way once the game takes over;
+  // F1 or the "logs" button bring it back
+  logBox.classList.remove('show');
 
   document.getElementById('login').style.display = 'none';
   document.getElementById('bootNew').style.display = '';
