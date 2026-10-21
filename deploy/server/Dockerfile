@@ -20,10 +20,13 @@ RUN cmake -S /src/engine -B . -G Ninja \
 # Package the compiled QVMs (cgame/qagame/ui) as a small pk3. Quake 3 refuses
 # archive entries whose timestamps look like they were written in the future,
 # so clamp them to a stable epoch first.
+#
+# NB: the missionpack (Team Arena) module targets also emit qagame.qvm etc. with
+# the same names but different stat indexes — must pick the baseq3 VM paths.
 RUN mkdir -p /stage/vm \
-  && QVM_CGAME=$(find . -name cgame.qvm | head -1) \
-  && QVM_QAGAME=$(find . -name qagame.qvm | head -1) \
-  && QVM_UI=$(find . -name ui.qvm | head -1) \
+  && QVM_CGAME=$(find . -name cgame.qvm -path '*baseq3/vm/*' | head -1) \
+  && QVM_QAGAME=$(find . -name qagame.qvm -path '*baseq3/vm/*' | head -1) \
+  && QVM_UI=$(find . -name ui.qvm -path '*baseq3/vm/*' | head -1) \
   && cp "$QVM_CGAME" "$QVM_QAGAME" "$QVM_UI" /stage/vm/ \
   && cd /stage \
   && touch -t 200001010000 vm/*.qvm \

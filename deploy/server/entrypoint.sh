@@ -33,13 +33,10 @@ for f in "$Q3_DATA_DIR"/*.pk3 "$Q3_DATA_DIR"/*.cfg; do
   ln -sf "$f" "$FS_BASEPATH/$BASEGAME/$(basename "$f")"
 done
 
-# If the data mount already provides a zz-scorekeep.pk3 it overrode the copy
-# above via the symlink; otherwise stage the image-bundled one, server-side
-# only (retail baseq3; the demo build stays untouched).
+# Always overwrite with this image's copy — the pk3 is rebuilt here and a stale
+# one must never survive a container recreate.
 if [ "$BASEGAME" != "demoq3" ]; then
-  if [ ! -e "$FS_BASEPATH/$BASEGAME/zz-scorekeep.pk3" ]; then
-    cp -f /opt/baseq3-extra/zz-scorekeep.pk3 "$FS_BASEPATH/$BASEGAME/zz-scorekeep.pk3"
-  fi
+  cp -f /opt/baseq3-extra/zz-scorekeep.pk3 "$FS_BASEPATH/$BASEGAME/zz-scorekeep.pk3"
 fi
 
 # Server config: user-provided file contents or the bundled default for this
