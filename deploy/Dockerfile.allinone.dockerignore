@@ -1,0 +1,12 @@
+# Context filter for Dockerfile.allinone (replaces the root .dockerignore):
+# like the root file, but deploy/public/ is needed here.
+**/.DS_Store
+tools/
+deploy/quake3-data/
+deploy/test/
+game/build/
+game/client/node_modules/
+game/server/dist/
+master/
+website/
+**/node_modules/

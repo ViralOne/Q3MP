@@ -109,6 +109,23 @@ machines download `zz-cgame.pk3` automatically like any other asset (one
    Then open `https://quake.example.com/` and click through; the game connects
    via the gateway at `/ws` by default.
 
+## All-in-one image (single container)
+
+`Dockerfile.allinone` packs ioq3ded, the gateway and Caddy into one image
+(`allinone/start.sh` supervises them; if one exits the container restarts as a
+whole). One data volume, one service:
+
+```sh
+RCON_PASSWORD=... DOMAIN=quake.example.com \
+  docker compose -f docker-compose.allinone.yml up -d --build
+```
+
+It uses the same ports as the three-container stack (80, 443, 27960/udp) —
+stop that one first, or set `HTTP_PORT` / `HTTPS_PORT` / `GAME_UDP_PORT`.
+`./quake3-data` is mounted read-write (the server publishes `zz-cgame.pk3`
+into it); TLS certificates persist in the `caddy-state` volume. Inside the
+container the gateway and Caddy's admin endpoint listen on loopback only.
+
 ## Player-facing URLs
 
 | URL | Description |
@@ -134,10 +151,10 @@ apply to everyone).
 ## Admin panel
 
 `admin.html` talks to gateway endpoints under `/admin/api/`. The gateway
-authenticates requests against `RCON_PASSWORD` (compose default `q3admin` —
-**change it**, e.g. `RCON_PASSWORD=... docker compose up -d`) and injects it
-into rcon datagrams; the game server validates the password again. An empty
-`RCON_PASSWORD` disables the admin API entirely.
+authenticates requests against `RCON_PASSWORD` (required by the compose files —
+`docker compose up` refuses to start without it, e.g.
+`RCON_PASSWORD=... docker compose up -d` or a line in `deploy/.env`) and
+injects it into rcon datagrams; the game server validates the password again.
 
 - **Unlock** validates the password once per browser tab; `/admin/api/auth`
   returns 403 with a clear hint when it does not match `RCON_PASSWORD`.

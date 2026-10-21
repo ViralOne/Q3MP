@@ -15,9 +15,9 @@ services:
     # VMs come from the official pak7/pak8 point-release QVMs.
     environment:
       FS_BASEGAME: "baseq3"
-      # Remote console password, used by the admin panel. Change or override
-      # with RCON_PASSWORD=... in the environment; empty disables rcon.
-      RCON_PASSWORD: "${RCON_PASSWORD:-q3admin}"
+      # Remote console password, used by the admin panel. Required: set
+      # RCON_PASSWORD=... in the environment or deploy/.env (no default).
+      RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD (admin panel / rcon password)}"
     ports:
       # Optional: expose UDP so native ioquake3 players can join too.
       # The WASM clients come in through the gateway over wss.
@@ -34,7 +34,7 @@ services:
       TARGET_PORT: "27960"
       MAX_CONNECTIONS: "64"
       # Validated against incoming /admin/api requests; must match the server.
-      RCON_PASSWORD: "${RCON_PASSWORD:-q3admin}"
+      RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD (admin panel / rcon password)}"
       # List this server on q3js.com (community servers). Needs a public
       # domain with real TLS — set Q3JS_PUBLISH_HOST to it (see README).
       Q3JS_MASTER_URL: "${Q3JS_MASTER_URL:-https://master.q3js.com}"
@@ -51,6 +51,9 @@ services:
 
   web:
     image: caddy:2
+    environment:
+      # Caddyfile site address; without it Caddy only serves localhost
+      DOMAIN: "${DOMAIN:-localhost}"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./public:/srv/web:ro

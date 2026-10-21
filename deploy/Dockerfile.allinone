@@ -1,0 +1,96 @@
+# All-in-one image: ioq3ded + WebSocket-to-UDP gateway + Caddy (TLS, launcher,
+# /assets PK3 serving) in one container, supervised by deploy/allinone/start.sh.
+# Same pieces as the three-container docker-compose.yml stack, for hosts where
+# one image / one volume is simpler. No game data is baked in.
+#
+# Build context: repository root (see docker-compose.allinone.yml). Uses
+# Dockerfile.allinone.dockerignore instead of the root .dockerignore, because
+# this image needs deploy/public/.
+
+# --- ioq3ded + QVM pk3s (same steps as deploy/server/Dockerfile) -------------
+FROM buildpack-deps:bookworm-scm AS build
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends build-essential cmake ninja-build zip bzip2 libcurl4-openssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY game/engine /src/engine
+WORKDIR /src/build
+RUN cmake -S /src/engine -B . -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_CLIENT=OFF \
+      -DBUILD_SERVER=ON \
+      -DBUILD_GAME_LIBRARIES=OFF \
+      -DBUILD_GAME_QVMS=ON \
+      -DBUILD_RENDERER_GL1=OFF \
+      -DBUILD_RENDERER_GL2=OFF \
+      -DUSE_OPENAL=OFF \
+      -DUSE_VOIP=OFF \
+  && cmake --build . --parallel "$(nproc)"
+
+# baseq3 VM paths only (the missionpack targets emit same-named QVMs)
+RUN mkdir -p /stage/vm \
+  && QVM_CGAME=$(find . -name cgame.qvm -path '*baseq3/vm/*' | head -1) \
+  && QVM_QAGAME=$(find . -name qagame.qvm -path '*baseq3/vm/*' | head -1) \
+  && QVM_UI=$(find . -name ui.qvm -path '*baseq3/vm/*' | head -1) \
+  && cp "$QVM_CGAME" "$QVM_QAGAME" "$QVM_UI" /stage/vm/ \
+  && cd /stage \
+  && touch -t 200001010000 vm/*.qvm \
+  && zip -q -9 -X /zz-webvm.pk3 vm/cgame.qvm vm/qagame.qvm vm/ui.qvm \
+  && zip -q -9 -X /zz-scorekeep.pk3 vm/qagame.qvm \
+  && zip -q -9 -X /zz-cgame.pk3 vm/cgame.qvm
+
+# --- gateway dependencies -----------------------------------------------------
+FROM node:24-bookworm-slim AS gateway
+WORKDIR /app
+COPY deploy/gateway/package.json deploy/gateway/package-lock.json ./
+RUN npm ci --omit=dev --silent
+COPY deploy/gateway/gateway.mjs deploy/gateway/master-heartbeat.mjs ./
+
+# --- caddy binary -------------------------------------------------------------
+FROM caddy:2 AS caddy
+
+# --- runtime ------------------------------------------------------------------
+# bookworm (glibc) to match the ioq3ded build; node comes with the base image
+FROM node:24-bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libcurl4 tini ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /src/build/Release/ioq3ded /usr/local/bin/ioq3ded
+COPY --from=build /zz-webvm.pk3 /zz-scorekeep.pk3 /zz-cgame.pk3 /opt/baseq3-extra/
+COPY deploy/server/entrypoint.sh /usr/local/bin/q3ded-entrypoint.sh
+COPY deploy/server/defaults/baseq3.cfg deploy/server/defaults/demoq3.cfg /defaults/
+
+COPY --from=gateway /app /opt/gateway
+
+COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
+# Same Caddyfile as the split stack; the gateway is a sibling process here,
+# not the "gateway" compose service.
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+RUN sed -i 's/gateway:8080/127.0.0.1:8080/g' /etc/caddy/Caddyfile \
+  && ! grep -q 'gateway:8080' /etc/caddy/Caddyfile
+COPY deploy/public /srv/web
+
+COPY deploy/allinone/start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/q3ded-entrypoint.sh \
+  # one data volume: the server stages paks from /data, publishes zz-cgame.pk3
+  # to /out, and Caddy serves /srv/data as /assets — all the same directory
+  && ln -s /data /out \
+  && ln -s /data /srv/data
+
+# /data   game data (pak0..pak8.pk3 under baseq3/), writable for zz-cgame.pk3
+# /state  ioq3ded fs_homepath
+# /caddy  TLS certificates and Caddy state (keep it, or Let's Encrypt rate-limits)
+ENV FS_BASEPATH=/game \
+    FS_HOMEPATH=/state \
+    XDG_DATA_HOME=/caddy/data \
+    XDG_CONFIG_HOME=/caddy/config \
+    TARGET_HOST=127.0.0.1 \
+    TARGET_PORT=27960 \
+    GATEWAY_HOST=127.0.0.1 \
+    GATEWAY_PORT=8080 \
+    GAME_DATA_DIR=/data/baseq3
+VOLUME ["/data", "/state", "/caddy"]
+
+EXPOSE 80/tcp 443/tcp 27960/udp
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/start.sh"]
