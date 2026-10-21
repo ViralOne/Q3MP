@@ -38,9 +38,13 @@
 <div class="card">
   <h2>Access</h2>
   <div class="row">
-    <input id="pw" type="password" placeholder="rcon password" spellcheck="false">
-    <button id="pwSave" class="ghost">Save (this session)</button>
+    <input id="pw" type="password" placeholder="rcon password" spellcheck="false" autocomplete="off">
+    <button id="unlock">Unlock</button>
     <span class="kv" id="pwState"></span>
+  </div>
+  <div class="kv" style="font-size:11px">
+    the password is the <b>RCON_PASSWORD</b> env var from <b>deploy/docker-compose.yml</b>
+    (deploy default: <b>q3admin</b> · change it there + <code>docker compose up -d</code>)
   </div>
 </div>
 
@@ -57,15 +61,14 @@
 <div class="card">
   <h2>Game</h2>
   <div class="row">
-    <label class="kv" for="map">Map:</label>
-    <input id="mapSearch" size="10" spellcheck="false" placeholder="filter…">
-    <input id="map" list="maps" size="14" spellcheck="false" placeholder="q3dm17">
-    <datalist id="maps"><option>…</option></datalist>
+    <label class="kv" for="mapSearch">Map:</label>
+    <input id="mapSearch" size="12" spellcheck="false" placeholder="filter…">
+    <select id="map" style="max-width:260px"><option value="">— pick a map —</option></select>
     <button class="ghost" data-cmd="map %map%">Load Map</button>
     <button class="ghost" data-cmd="nextmap">Next Map</button>
     <button class="ghost" data-cmd="map_restart">Restart Round</button>
-    <span class="kv" id="mapCount"></span>
   </div>
+  <div class="kv" id="mapInfo" style="font-size:11px;margin-bottom:8px">loading the map list from the server paks…</div>
   <div class="row">
     <label class="kv" for="gt">Gametype:</label>
     <select id="gt">
@@ -118,17 +121,33 @@
 const $ = (id) => document.getElementById(id);
 const pwKey = 'q3.adminRcon';
 $('pw').value = sessionStorage.getItem(pwKey) || '';
-pwState();
 
-function pwState() {
-  $('pwState').textContent = $('pw').value
-    ? 'password stored for this browser tab'
-    : 'password required for every action (rcon)';
+// Unlock validates the password against the gateway before anything else can
+// be run, so a typo is reported where it can be understood.
+async function unlock() {
+  const pw = $('pw').value;
+  if (!pw) { $('pwState').textContent = 'type the rcon password first'; return false; }
+  try {
+    const response = await fetch('/admin/api/auth', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    if (response.ok) {
+      sessionStorage.setItem(pwKey, pw);
+      $('pwState').textContent = 'unlocked — password accepted for this browser tab';
+      return true;
+    }
+    $('pwState').textContent =
+      'password rejected — it must match RCON_PASSWORD in deploy/docker-compose.yml (deploy default: q3admin)';
+    return false;
+  } catch (e) {
+    $('pwState').textContent = 'unlock failed: ' + (e && e.message || e);
+    return false;
+  }
 }
-$('pwSave').addEventListener('click', () => {
-  sessionStorage.setItem(pwKey, $('pw').value);
-  pwState();
-});
+$('unlock').addEventListener('click', unlock);
+$('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
 
 function out(text) { $('out').textContent = text + '\n\n' + $('out').textContent.slice(0, 8000); }
 let busy = false;
@@ -146,8 +165,13 @@ async function rcon(command) {
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      $('st').textContent = body.error || `HTTP ${response.status}`;
-      out(`> ${command}\nERROR: ${body.error || response.status}`);
+      if (response.status === 403) {
+        $('st').textContent = 'wrong password — hit Unlock in the Access card (must match RCON_PASSWORD in deploy/docker-compose.yml)';
+        out(`> ${command}\nERROR: rejected — the password does not match RCON_PASSWORD (deploy default: q3admin)`);
+      } else {
+        $('st').textContent = body.error || `HTTP ${response.status}`;
+        out(`> ${command}\nERROR: ${body.error || response.status}`);
+      }
       return null;
     }
     out(`> ${command}\n${body.output}`);
@@ -210,26 +234,77 @@ for (const f of FLAGS) {
 }
 
 // --- map list from the actual server paks --------------------------------------
+//
+// File name only carries so much: group by prefix (FFA / duel / CTF / pro) so
+// the picker doubles as a directory of what can be loaded.
+
+const MAP_GROUPS = [
+  { test: (m) => m.startsWith('q3ctf') || m.endsWith('_ctf'), label: 'CTF maps (q3ctf…)' },
+  { test: (m) => m.startsWith('q3tourney'), label: 'Duel / tournament maps (q3tourney…)' },
+  { test: (m) => m.startsWith('pro-'), label: 'Pro (competitive reworks, pro-…)' },
+  { test: (m) => m.startsWith('q3dm'), label: 'Deathmatch maps (q3dm…)' },
+];
+
+function mapCategory(m) {
+  for (const g of MAP_GROUPS) if (g.test(m)) return g.label;
+  return 'Other maps';
+}
 
 let allMaps = [];
 async function loadMapList() {
   try {
     const response = await fetch('/admin/api/maps');
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) { $('mapCount').textContent = body.error || `HTTP ${response.status}`; return; }
+    if (!response.ok) { $('mapInfo').textContent = body.error || `HTTP ${response.status}`; return; }
     allMaps = body.maps || [];
-    $('mapCount').textContent = allMaps.length ? `${allMaps.length} maps in the paks` : (body.warning || 'no maps found');
+    if (!allMaps.length) {
+      $('mapInfo').textContent = body.warning || 'no maps found in the server paks';
+      return;
+    }
+    $('mapInfo').textContent = `${allMaps.length} maps available in the server paks`;
     filterMaps();
   } catch (e) {
-    $('mapCount').textContent = 'map list failed: ' + (e && e.message || e);
+    $('mapInfo').textContent = 'map list failed: ' + (e && e.message || e);
   }
 }
+
 function filterMaps() {
   const q = $('mapSearch').value.trim().toLowerCase();
-  const mapOptions = allMaps.filter((m) => !q || m.includes(q)).slice(0, 400);
-  $('maps').innerHTML = mapOptions.map((m) => `<option>${escapeHtml(m)}</option>`).join('');
+  const maps = allMaps.filter((m) => !q || m.includes(q));
+  const select = $('map');
+
+  select.innerHTML = '';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = q && maps.length ? `… ${maps.length} maps match "${q}"` : '— pick a map —';
+  select.append(blank);
+
+  if (!maps.length) return;
+  const grouped = new Map();
+  for (const m of maps) {
+    const label = mapCategory(m);
+    if (!grouped.has(label)) grouped.set(label, []);
+    grouped.get(label).push(m);
+  }
+  for (const [label, entries] of grouped) {
+    const group = document.createElement('optgroup');
+    group.label = label;
+    for (const m of entries) {
+      const option = document.createElement('option');
+      option.value = m;
+      option.textContent = m;
+      group.append(option);
+    }
+    select.append(group);
+  }
 }
 $('mapSearch').addEventListener('input', filterMaps);
+$('mapSearch').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('map').value = allMaps.find((m) => m.includes($('mapSearch').value.trim().toLowerCase())) || '';
+});
+$('map').addEventListener('change', () => {
+  if ($('map').value) $('mapInfo').textContent = `selected: maps/${$('map').value}.bsp (loaded through rcon "map")`;
+});
 
 async function refresh() {
   if (!$('pw').value) { $('status').textContent = 'enter the rcon password above'; $('players').textContent = ''; return; }

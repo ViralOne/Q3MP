@@ -246,6 +246,12 @@ async function handleAdmin(request, response) {
       respond(response, 200, status);
       return true;
     }
+    if (url.pathname === "/admin/api/auth" && request.method === "POST") {
+      const body = await readBody(request);
+      if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
+      respond(response, 200, { ok: true });
+      return true;
+    }
     if (url.pathname === "/admin/api/maps" && request.method === "GET") {
       const { maps, warning } = listAvailableMaps();
       respond(response, 200, { maps, warning });

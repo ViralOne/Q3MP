@@ -27,6 +27,11 @@
     font-size:11px; line-height:1.5; color:#7c6; background:rgba(0,0,0,.82); border:1px solid #244;
     padding:8px 10px; z-index:9; white-space:pre-wrap; display:none; }
   #log.show { display:block; }
+  #playbar { position:absolute; right:8px; bottom:8px; display:none; gap:6px; z-index:10; }
+  #playbar.show { display:flex; }
+  #playbar button { background:rgba(20,20,20,.85); border:1px solid #444; color:#bbb;
+    font:inherit; font-size:11px; padding:5px 10px; border-radius:3px; cursor:pointer; }
+  #playbar button:hover { border-color:#d94a36; color:#fff; }
   #error { color:#d94a36; font-size:12px; white-space:pre-wrap; max-width:80vw; text-align:center; }
 </style>
 </head>
@@ -46,6 +51,10 @@
   <div id="error"></div>
 </div>
 <div id="log"></div>
+<div id="playbar">
+  <button id="fsBtn" title="Fullscreen requires a click; press ESC to free the mouse first if the game has it">fullscreen</button>
+  <button id="logBtn" title="F1 also toggles">logs (F1)</button>
+</div>
 
 <script>
 // Surface module script failures on screen instead of silently dead buttons.
@@ -87,9 +96,49 @@ window.addEventListener('keydown', (e) => {
   }
 }, true);
 
+// --- in-game player toolbar ----------------------------------------------------
+// Fullscreen lives here because browsers can exit fullscreen/pointer-lock on
+// ESC or window changes, and only a click can bring fullscreen back. The bar
+// hides while the game holds the pointer (no cursor to click with) and walks
+// back the moment it is released.
+
+const playbar = document.getElementById('playbar');
+const fsBtn = document.getElementById('fsBtn');
+const logBtn = document.getElementById('logBtn');
+logBtn.addEventListener('click', () => logBox.classList.toggle('show'));
+
+function screenElement() {
+  const el = document.documentElement;
+  return el.fullscreenElement !== undefined ? el : el.webkitFullscreenElement !== undefined ? el : null;
+}
+
+fsBtn.addEventListener('click', () => {
+  const el = screenElement();
+  if (!el) { logLine('this browser does not support fullscreen'); return; }
+  const active = document.fullscreenElement || document.webkitFullscreenElement;
+  if (active) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+});
+
+const syncFullscreenLabel = () => {
+  const active = document.fullscreenElement || document.webkitFullscreenElement;
+  fsBtn.textContent = active ? 'window' : 'fullscreen';
+};
+document.addEventListener('fullscreenchange', syncFullscreenLabel);
+document.addEventListener('webkitfullscreenchange', syncFullscreenLabel);
+
+// Hide the toolbar while the engine owns the mouse; ESC (which the browser
+// must swallow to leave pointer lock) brings it back together with the cursor.
+document.addEventListener('pointerlockchange', () => {
+  playbar.classList.toggle('show', document.pointerLockElement == null);
+});
+
 const realError = console.error;
 console.error = (...a) => { realError(...a); logLine(a.map(String).join(' ')); };
 logBox.classList.add('show');
+logLine('[keys] ESC = game menu (quit/team) · ~ = game console · F1 = this log · fullscreen button bottom-right');
+logLine('[vote] ~ console: callvote map q3dm17 · callvote nextmap · callvote g_gametype 3 … — others answer: /vote yes or /vote no');
+logLine('[chat] y = say (chat) · tools sit bottom-right when the cursor is free');
 
 function say(msg) { statusEl.textContent = msg; logLine(msg); }
 function fail(msg) {
@@ -378,6 +427,7 @@ async function loadGame(playerName) {
 
   canvas.style.display = 'block';
   document.getElementById('bootNew').style.display = 'none';
+  playbar.classList.add('show');
 }
 </script>
 </body>

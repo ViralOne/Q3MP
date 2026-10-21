@@ -97,15 +97,44 @@ browser client run the vanilla VMs straight out of the paks. Set
 
 ## Admin panel
 
-`admin.html` talks to two gateway endpoints (`/admin/api/status`,
-`/admin/api/rcon`). The gateway authenticates requests against
-`RCON_PASSWORD` (compose default `q3admin` — **change it**, e.g.
-`RCON_PASSWORD=... docker compose up -d`) and injects it into rcon datagrams;
-the game server validates the password again. An empty `RCON_PASSWORD`
-disables the admin API entirely.
+`admin.html` talks to gateway endpoints under `/admin/api/`. The gateway
+authenticates requests against `RCON_PASSWORD` (compose default `q3admin` —
+**change it**, e.g. `RCON_PASSWORD=... docker compose up -d`) and injects it
+into rcon datagrams; the game server validates the password again. An empty
+`RCON_PASSWORD` disables the admin API entirely.
+
+- **Unlock** validates the password once per browser tab; `/admin/api/auth`
+  returns 403 with a clear hint when it does not match `RCON_PASSWORD`.
+- **Flags** card toggles rule cvars through rcon (`set <cvar> 0|1`):
+  `g_scoreKeep` (keep disconnected players' scores until the map changes),
+  `g_friendlyFire`, `g_allowVote`, `g_doWarmup`, `g_teamForceBalance`,
+  `g_forcerespawn`.
+- **Maps** dropdown is built live from the installed paks
+  (`/admin/api/maps` — the gateway reads only the zip central directory),
+  grouped FFA / duel / CTF / pro, with a filter field.
 
 For a public deployment, add basic auth for `/admin*` in the `Caddyfile`, since
 anyone who knows the password could otherwise use the panel.
+
+## Playing, voting, in-game helpers
+
+- **Game menu**: `ESC` opens the engine's own menu (drawn in the canvas) —
+  leave, team selection, and so on. `~` opens the engine console.
+- **Voting**: with `g_allowVote 1` any player can call votes from the `~`
+  console: `callvote map q3dm17`, `callvote nextmap`, `callvote g_gametype 3`,
+  `callvote kick <player>`, `callvote clientkill…` (see `callvote` for the full
+  list: map, map_restart, nextmap, g_gametype, kick, clientkick, g_doWarmup,
+  timelimit, fraglimit). Everyone answers `/vote yes` / `/vote no`; the vote
+  passes on a majority when the timer ends. Admins disable it with
+  `set g_allowVote 0`.
+- **Log overlay**: `F1` toggles the browser-side log (the engine console stays
+  on `~` alone); a `logs` button sits bottom-right.
+- **Fullscreen**: browsers can exit fullscreen/pointer-lock on ESC — the
+  `fullscreen` button (bottom-right, hidden while the game owns the mouse)
+  restores it in one click; it flips to `window` while fullscreen is active.
+- **Score keep**: `g_scoreKeep 1` (default) preserves each player's score
+  across disconnects until the map changes — reconnect and continue where you
+  left off. Stashes are keyed by netname, max 32 per map.
 
 ## Client downloads (browser cache)
 
