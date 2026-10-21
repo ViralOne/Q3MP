@@ -32,7 +32,7 @@ export const PRESETS = [
     description: "everyone for themselves · 20 frags / 15 min",
     gametype: 0,
     maps: (all) => [...all.filter(CUSTOM_DM), ...all.filter(DM)],
-    cvars: { fraglimit: 20, timelimit: 15, capturelimit: 0, g_teamForceBalance: 0 },
+    cvars: { fraglimit: 20, timelimit: 15, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 0 },
   },
   {
     id: "tdm",
@@ -40,7 +40,7 @@ export const PRESETS = [
     description: "red vs blue · 50 frags / 20 min · balanced teams",
     gametype: 4,
     maps: (all) => [...all.filter(CUSTOM_DM), ...all.filter(DM)],
-    cvars: { fraglimit: 50, timelimit: 20, capturelimit: 0, g_teamForceBalance: 1 },
+    cvars: { fraglimit: 50, timelimit: 20, capturelimit: 0, g_teamForceBalance: 1, g_weaponMode: 0 },
   },
   {
     id: "ctf",
@@ -48,7 +48,7 @@ export const PRESETS = [
     description: "8 captures / 20 min · balanced teams",
     gametype: 3,
     maps: (all) => all.filter(CTF),
-    cvars: { fraglimit: 0, timelimit: 20, capturelimit: 8, g_teamForceBalance: 1 },
+    cvars: { fraglimit: 0, timelimit: 20, capturelimit: 8, g_teamForceBalance: 1, g_weaponMode: 0 },
   },
   {
     id: "duel",
@@ -56,7 +56,24 @@ export const PRESETS = [
     description: "tournament maps · 10 frags / 10 min · others spectate",
     gametype: 1,
     maps: (all) => all.filter(DUEL),
-    cvars: { fraglimit: 10, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0 },
+    cvars: { fraglimit: 10, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 0 },
+  },
+  // weapon arenas (fork qagame, g_weaponMode): free for all, nothing on the map
+  {
+    id: "instagib",
+    name: "Instagib",
+    description: "railgun only · one hit kills · endless ammo · 30 frags / 10 min",
+    gametype: 0,
+    maps: (all) => [...all.filter(CUSTOM_DM), ...all.filter(DM)],
+    cvars: { fraglimit: 30, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 1 },
+  },
+  {
+    id: "rockets",
+    name: "Rocket arena",
+    description: "rocket launcher + gauntlet · endless rockets · 100 armor · 30 frags / 10 min",
+    gametype: 0,
+    maps: (all) => [...all.filter(CUSTOM_DM), ...all.filter(DM)],
+    cvars: { fraglimit: 30, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 2 },
   },
 ];
 

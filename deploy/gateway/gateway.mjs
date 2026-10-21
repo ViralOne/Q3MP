@@ -475,6 +475,7 @@ async function handleAdmin(request, response) {
       current: status ? {
         mapname: String(info.mapname ?? "").toLowerCase(),
         gametype: Number(info.g_gametype ?? 0),
+        weaponMode: Number(info.g_weaponMode ?? 0),
         players: status.players.length,
         maxclients: Number(info.sv_maxclients ?? 0),
         hostname: info.sv_hostname ?? "",

@@ -103,6 +103,11 @@ void TossClientItems( gentity_t *self ) {
 	int			i;
 	gentity_t	*drop;
 
+	// weapon arenas: everyone already has the one weapon, nothing drops
+	if ( g_weaponMode.integer ) {
+		return;
+	}
+
 	// drop the weapon if not a gauntlet or machinegun
 	weapon = self->s.weapon;
 
@@ -882,6 +887,12 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		}
 #endif
 		damage = damage * max / 100;
+	}
+
+	// instagib: any railgun hit from another player kills outright
+	if ( g_weaponMode.integer == WEAPONMODE_INSTAGIB && mod == MOD_RAILGUN
+		&& attacker->client && attacker != targ ) {
+		damage = 1000;
 	}
 
 	client = targ->client;

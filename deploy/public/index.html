@@ -749,7 +749,8 @@ async function loadGallery() {
       (Number(b.name === now) - Number(a.name === now)) || a.name.localeCompare(b.name));
     galleryStrip.replaceChildren(...sorted.map((m) => mapCard(m, m.name === now)));
     galleryTitle.textContent = now
-      ? `${maps.length} maps on this server · now: ${now} · ${gametypeName(current.gametype)} · ${current.players}/${current.maxclients} players`
+      ? `${maps.length} maps on this server · now: ${now} · ${gametypeName(current.gametype)}` +
+        `${({ 1: ' instagib', 2: ' rocket arena' })[current.weaponMode] || ''} · ${current.players}/${current.maxclients} players`
       : `${maps.length} maps on this server`;
     galleryReady = true;
     showGallery();

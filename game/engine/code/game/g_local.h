@@ -714,6 +714,13 @@ extern	vmCvar_t	g_capturelimit;
 extern	vmCvar_t	g_friendlyFire;
 
 extern	vmCvar_t	g_scoreKeep;		// keep disconnected players' scores until map change
+extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCKETS (latched)
+
+#define WEAPONMODE_INSTAGIB	1	// railgun only, endless ammo, one hit kills
+#define WEAPONMODE_ROCKETS	2	// rocket launcher + gauntlet, endless rockets, 100 armor
+// arena ammo: a real count (bots treat -1 as "no ammo" and never fire),
+// topped up every second so it never runs out
+#define WEAPONMODE_AMMO		999
 extern	vmCvar_t	g_password;
 extern	vmCvar_t	g_needpass;
 extern	vmCvar_t	g_gravity;

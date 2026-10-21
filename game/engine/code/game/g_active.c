@@ -412,6 +412,13 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 	while ( client->timeResidual >= 1000 ) {
 		client->timeResidual -= 1000;
 
+		// weapon arenas: keep the one weapon full
+		if ( g_weaponMode.integer == WEAPONMODE_INSTAGIB ) {
+			client->ps.ammo[WP_RAILGUN] = WEAPONMODE_AMMO;
+		} else if ( g_weaponMode.integer == WEAPONMODE_ROCKETS ) {
+			client->ps.ammo[WP_ROCKET_LAUNCHER] = WEAPONMODE_AMMO;
+		}
+
 		// regenerate
 #ifdef MISSIONPACK
 		if( bg_itemlist[client->ps.stats[STAT_PERSISTANT_POWERUP]].giTag == PW_GUARD ) {

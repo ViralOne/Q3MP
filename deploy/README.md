@@ -170,6 +170,17 @@ DM maps, CTF the `q3ctf*` / `*_ctf` maps, Duel the tourney maps. **Next Map**
 advances the rotation. The mode lasts until the server restarts (then the
 config defaults apply again).
 
+Two weapon arenas come from the fork's game code (`g_weaponMode`, latched,
+applies on map load — the presets reload the map for you):
+
+| Preset | `g_weaponMode` | Rules |
+| --- | --- | --- |
+| **Instagib** | 1 | railgun only, endless ammo, any railgun hit kills |
+| **Rocket arena** | 2 | rocket launcher + gauntlet, endless rockets, spawn with 100 armor |
+
+In both, every weapon, ammo, armor, health and powerup pickup is removed from
+the map (CTF flags stay) and dead players drop nothing. Bots play both modes.
+
 ## Leaderboard
 
 `/stats.html` (linked from the launcher and admin panel) shows frags,

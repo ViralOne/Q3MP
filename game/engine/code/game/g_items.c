@@ -876,6 +876,11 @@ int G_ItemDisabled( gitem_t *item ) {
 
 	char name[128];
 
+	// weapon arenas keep only team objectives (CTF flags) on the map
+	if ( g_weaponMode.integer && item->giType != IT_TEAM ) {
+		return qtrue;
+	}
+
 	Com_sprintf(name, sizeof(name), "disable_%s", item->classname);
 	return trap_Cvar_VariableIntegerValue( name );
 }

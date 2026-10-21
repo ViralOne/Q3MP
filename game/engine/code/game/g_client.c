@@ -1388,6 +1388,18 @@ void ClientSpawn(gentity_t *ent) {
 	client->ps.ammo[WP_GAUNTLET] = -1;
 	client->ps.ammo[WP_GRAPPLING_HOOK] = -1;
 
+	// weapon arenas: one weapon with endless ammo, nothing to pick up
+	if ( g_weaponMode.integer == WEAPONMODE_INSTAGIB ) {
+		client->ps.stats[STAT_WEAPONS] = ( 1 << WP_RAILGUN );
+		client->ps.ammo[WP_MACHINEGUN] = 0;
+		client->ps.ammo[WP_RAILGUN] = WEAPONMODE_AMMO;
+	} else if ( g_weaponMode.integer == WEAPONMODE_ROCKETS ) {
+		client->ps.stats[STAT_WEAPONS] = ( 1 << WP_ROCKET_LAUNCHER ) | ( 1 << WP_GAUNTLET );
+		client->ps.ammo[WP_MACHINEGUN] = 0;
+		client->ps.ammo[WP_ROCKET_LAUNCHER] = WEAPONMODE_AMMO;
+		client->ps.stats[STAT_ARMOR] = 100;
+	}
+
 	// health will count down towards max_health
 	ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH] + 25;
 
