@@ -16,6 +16,8 @@ services:
       # Caddyfile site address; omit for localhost with an internal cert.
       DOMAIN: "${DOMAIN:-localhost}"
       FS_BASEGAME: "${FS_BASEGAME:-baseq3}"
+      # server frames per second (ioquake3 default 20); higher = smoother, more CPU/bandwidth
+      SV_FPS: "${SV_FPS:-30}"
       # Shared by ioq3ded (rcon) and the gateway admin API; must be set.
       RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD (admin panel / rcon password)}"
       # List this server on q3js.com (community servers). Needs a public
@@ -33,11 +35,13 @@ services:
       - ./quake3-data:/data
       - server-state:/state
       - caddy-state:/caddy
+    # Published on this machine only by default. On a public server set
+    # BIND_IP=0.0.0.0 (or the host's public address) to accept players.
     ports:
-      - "${HTTP_PORT:-80}:80/tcp"
-      - "${HTTPS_PORT:-443}:443/tcp"
+      - "${BIND_IP:-127.0.0.1}:${HTTP_PORT:-80}:80/tcp"
+      - "${BIND_IP:-127.0.0.1}:${HTTPS_PORT:-443}:443/tcp"
       # Optional: native ioquake3 players. Browser clients come in over wss.
-      - "${GAME_UDP_PORT:-27960}:27960/udp"
+      - "${BIND_IP:-127.0.0.1}:${GAME_UDP_PORT:-27960}:27960/udp"
     restart: unless-stopped
 
 volumes:

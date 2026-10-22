@@ -120,9 +120,13 @@ machines download `zz-cgame.pk3` automatically like any other asset (one
 whole). One data volume, one service:
 
 ```sh
-RCON_PASSWORD=... DOMAIN=quake.example.com \
+RCON_PASSWORD=... DOMAIN=quake.example.com BIND_IP=0.0.0.0 \
   docker compose -f docker-compose.allinone.yml up -d --build
 ```
+
+Ports are published on `127.0.0.1` unless `BIND_IP` says otherwise, so a
+local test run is not reachable from the network; a public server needs
+`BIND_IP=0.0.0.0`. `SV_FPS` (default 30) sets the server's update rate.
 
 It uses the same ports as the three-container stack (80, 443, 27960/udp) —
 stop that one first, or set `HTTP_PORT` / `HTTPS_PORT` / `GAME_UDP_PORT`.
