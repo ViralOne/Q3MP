@@ -1407,6 +1407,13 @@ void ClientSpawn(gentity_t *ent) {
 		client->ps.powerups[PW_HASTE] = level.time + 0x7fffff;
 	}
 
+	// weapon arenas: a short spawn protection, shown as the battle suit shell
+	client->spawnProtectUntil = 0;
+	if ( g_weaponMode.integer && g_spawnProtect.integer > 0 ) {
+		client->spawnProtectUntil = level.time + g_spawnProtect.integer;
+		client->ps.powerups[PW_BATTLESUIT] = client->spawnProtectUntil;
+	}
+
 	// health will count down towards max_health
 	ent->health = client->ps.stats[STAT_HEALTH] = client->ps.stats[STAT_MAX_HEALTH] + 25;
 

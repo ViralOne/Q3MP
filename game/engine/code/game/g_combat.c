@@ -909,6 +909,17 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		}
 	}
 
+	// spawn protection (weapon arenas): other players can neither hurt nor
+	// push someone who just spawned and has not fired yet
+	if ( client && client->spawnProtectUntil > level.time
+		&& attacker->client && attacker != targ ) {
+		if ( g_debugDamage.integer ) {
+			G_LogPrintf( "SpawnProtect: %i %i: %s blocked\n", (int)( attacker - g_entities ),
+				(int)( targ - g_entities ), client->pers.netname );
+		}
+		return;
+	}
+
 	if ( !dir ) {
 		dflags |= DAMAGE_NO_KNOCKBACK;
 	} else {

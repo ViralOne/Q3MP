@@ -194,6 +194,12 @@ weapons and ammo. Dead players drop nothing. Bots play all three. Excessive is
 our own take on the e+ style — Excessive Plus itself is closed source and not
 included.
 
+**Spawn protection** (all weapon arenas): for `g_spawnProtect` milliseconds
+after spawning (default 2000, `0` = off) other players can neither hurt nor
+push you, shown as the battle suit shell and its HUD timer. Firing ends it
+early, so it cannot be used to attack safely. `g_debugDamage 1` logs every
+blocked hit as `SpawnProtect:` in games.log.
+
 **Freeze tag** (`g_freeze 1`, latched, team deathmatch): a kill by an enemy
 freezes the victim in place instead of killing them (it still counts as a
 frag) — frozen players cannot move, shoot or be damaged and glow with a

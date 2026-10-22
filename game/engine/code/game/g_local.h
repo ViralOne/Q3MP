@@ -334,6 +334,8 @@ struct gclient_s {
 	qboolean	frozen;
 	int			thawProgress;		// ms a teammate has stood by
 	int			thawNotice;			// next "thawing n%" message
+	// weapon arenas: untouchable until this time, or until firing
+	int			spawnProtectUntil;
 	vec3_t		unlagOrigin, unlagMins, unlagMaxs;
 };
 
@@ -762,6 +764,8 @@ extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCK
 // arena ammo: a real count (bots treat -1 as "no ammo" and never fire),
 // topped up every second so it never runs out
 #define WEAPONMODE_AMMO		999
+
+extern	vmCvar_t	g_spawnProtect;		// ms of spawn protection in the weapon arenas (0 = off)
 
 extern	vmCvar_t	g_freeze;			// freeze tag in team deathmatch (latched)
 extern	vmCvar_t	g_thawTime;			// seconds a teammate needs to thaw someone

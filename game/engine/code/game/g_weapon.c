@@ -800,6 +800,14 @@ FireWeapon
 ===============
 */
 void FireWeapon( gentity_t *ent ) {
+	// firing ends spawn protection (a battle suit picked up since stays)
+	if ( ent->client->spawnProtectUntil ) {
+		if ( ent->client->ps.powerups[PW_BATTLESUIT] == ent->client->spawnProtectUntil ) {
+			ent->client->ps.powerups[PW_BATTLESUIT] = 0;
+		}
+		ent->client->spawnProtectUntil = 0;
+	}
+
 	if ( ent->s.weapon == WP_RAILGUN && !G_ClientCanUseRailgun( ent->s.number ) ) {
 		if ( ent->client->ps.ammo[WP_RAILGUN] >= 0 ) {
 			ent->client->ps.ammo[WP_RAILGUN]++;
