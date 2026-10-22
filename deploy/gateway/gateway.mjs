@@ -34,7 +34,7 @@ import { basename, dirname, join } from "node:path";
 import { WebSocketServer } from "ws";
 
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
-import { startStats, statsSnapshot, onLogLine } from "./stats.mjs";
+import { startStats, statsSnapshot, onLogLine, statsAdmin, statsAdminChange } from "./stats.mjs";
 import { startChatVote } from "./chatvote.mjs";
 import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax, presetOfInfo, presetAliases,
   MUTATORS, activeMutators, saveMutators, mutatorCommands, mutatorsOfInfo, mutatorsInSync } from "./presets.mjs";
@@ -798,6 +798,23 @@ async function handleAdmin(request, response) {
         respond(response, error.status || 500, { error: String(error.message || error) });
       }
       return true;
+    }
+    // leaderboard clean-up: GET the state, POST {password, action, ...}
+    // (remove/restore {name}, merge {from, into}/unmerge {from},
+    // removeMatch/restoreMatch {id}, reset/undoReset)
+    if (url.pathname === "/admin/api/stats") {
+      if (request.method === "GET") return respond(response, 200, statsAdmin()), true;
+      if (request.method === "POST") {
+        const body = await readBody(request);
+        if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
+        try {
+          respond(response, 200, statsAdminChange(String(body.action ?? ""), body));
+        } catch (error) {
+          respond(response, error.status || 500, { error: String(error.message || error) });
+        }
+        return true;
+      }
+      return respond(response, 405, { error: "method not allowed" }), true;
     }
     // mutators: GET the list (saved choice + what the server runs), PUT
     // {password, on:[ids]} to save and apply right away

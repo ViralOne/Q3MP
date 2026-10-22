@@ -25,6 +25,16 @@
   .mutGrid input { accent-color:#d94a36; margin-top:2px; }
   .mutGrid b { color:#eee; font-weight:700; display:block; }
   .mutGrid .live { color:#d94a36; font-size:10px; margin-left:4px; }
+  .lbTable { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px; }
+  .lbTable td, .lbTable th { padding:4px 6px; border-bottom:1px solid #1f1f1f; text-align:left; }
+  .lbTable th { color:#888; font-weight:400; font-size:10px; text-transform:uppercase; letter-spacing:1px; }
+  .lbTable td.n { text-align:right; color:#bbb; }
+  .lbTable .also { color:#777; font-size:11px; }
+  .lbTable button, .lbTable select { padding:3px 8px; font-size:11px; }
+  .lbScroll { max-height:340px; overflow:auto; margin-bottom:8px; }
+  .lbUndo { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .lbUndo span { border:1px solid #333; border-radius:3px; padding:2px 6px; font-size:11px; color:#bbb; }
+  .lbUndo button { padding:0 6px; margin-left:6px; font-size:11px; background:#222; color:#bbb; }
   button { background:#d94a36; border:0; color:#fff; font:inherit; padding:7px 14px;
     cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
   button.ghost { background:#222; color:#bbb; }
@@ -168,6 +178,26 @@
   </div>
   <div class="kv" id="pakState" style="font-size:12px;margin-bottom:8px">unlock with the password to manage map pk3s</div>
   <table id="pakList"></table>
+</div>
+
+<div class="card">
+  <h2>Leaderboard</h2>
+  <div class="row">
+    <input id="lbFilter" placeholder="filter players…" spellcheck="false" style="width:200px">
+    <button class="ghost" id="lbReset" title="stop counting everything played so far; undoable">Reset leaderboard</button>
+    <button class="ghost" id="lbUndoReset" hidden>Undo reset</button>
+    <a href="stats.html" class="kv">open leaderboard ↗</a>
+  </div>
+  <div class="lbScroll"><table class="lbTable">
+    <thead><tr><th>player</th><th>frags</th><th>deaths</th><th></th></tr></thead>
+    <tbody id="lbPlayers"></tbody>
+  </table></div>
+  <div class="lbScroll" style="max-height:220px"><table class="lbTable">
+    <thead><tr><th>recent match</th><th>top</th><th></th></tr></thead>
+    <tbody id="lbMatches"></tbody>
+  </table></div>
+  <div id="lbUndo" class="lbUndo"></div>
+  <div class="kv" id="lbState" style="font-size:12px">remove erases a player and every kill they were in · merge counts two names as one player · games.log itself is never changed, so everything here can be undone</div>
 </div>
 
 <div class="card">
@@ -784,6 +814,118 @@ async function toggleMutator(id) {
   await loadMutators();
 }
 
+// --- leaderboard clean-up (gateway /admin/api/stats) --------------------------------
+
+let lb = null;
+const LB_TYPES = { 0: 'FFA', 1: 'duel', 3: 'TDM', 4: 'CTF' };
+
+function lbButton(label, onClick, ghost = true) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  if (ghost) b.className = 'ghost';
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function renderLeaderboard() {
+  if (!lb) return;
+  const filter = $('lbFilter').value.trim().toLowerCase();
+  const rows = lb.players.filter((p) => !filter || p.names.some((n) => n.toLowerCase().includes(filter)));
+  $('lbPlayers').replaceChildren(...rows.slice(0, 200).map((p) => {
+    const tr = document.createElement('tr');
+    const name = document.createElement('td');
+    name.textContent = p.name + (p.bot ? ' (bot)' : '');
+    const others = p.names.filter((n) => n.toLowerCase() !== p.key);
+    if (others.length) {
+      const also = document.createElement('div');
+      also.className = 'also';
+      also.textContent = 'also: ' + others.join(', ');
+      name.append(also);
+    }
+    const kills = document.createElement('td'); kills.className = 'n'; kills.textContent = p.kills;
+    const deaths = document.createElement('td'); deaths.className = 'n'; deaths.textContent = p.deaths;
+    const act = document.createElement('td');
+    act.style.whiteSpace = 'nowrap';
+    const into = document.createElement('select');
+    into.append(new Option('merge into…', ''));
+    for (const q of lb.players) if (q.key !== p.key) into.append(new Option(q.name, q.name));
+    into.addEventListener('change', () => {
+      if (into.value && confirm(`Count "${p.name}" as "${into.value}" from now on (all their stats)?`)) {
+        lbChange('merge', { from: p.name, into: into.value });
+      } else into.value = '';
+    });
+    act.append(into, ' ', lbButton('remove', () => {
+      if (confirm(`Remove "${p.name}" from the leaderboard, with every kill they were in?`)) lbChange('remove', { name: p.name });
+    }));
+    tr.append(name, kills, deaths, act);
+    return tr;
+  }));
+  if (!rows.length) $('lbPlayers').innerHTML = '<tr><td colspan="4" class="kv">no players</td></tr>';
+
+  $('lbMatches').replaceChildren(...lb.recentMatches.map((m) => {
+    const tr = document.createElement('tr');
+    const what = document.createElement('td');
+    what.textContent = `${m.map} · ${LB_TYPES[m.gametype] ?? 'type ' + m.gametype} · ${m.kills} frags` +
+      (m.endedAt ? ' · ' + new Date(m.endedAt).toLocaleString() : '');
+    const top = document.createElement('td');
+    top.className = 'also';
+    top.textContent = m.scores.slice(0, 3).map((x) => `${x.name} ${x.score}`).join(' · ');
+    const act = document.createElement('td');
+    act.append(lbButton('remove', () => {
+      if (confirm(`Remove the ${m.map} match from the stats?`)) lbChange('removeMatch', { id: m.id });
+    }));
+    tr.append(what, top, act);
+    return tr;
+  }));
+  if (!lb.recentMatches.length) $('lbMatches').innerHTML = '<tr><td colspan="3" class="kv">no finished matches</td></tr>';
+
+  // everything removed or merged, each with its undo
+  const undo = [];
+  const chip = (text, action, body) => {
+    const span = document.createElement('span');
+    span.textContent = text;
+    span.append(lbButton('undo', () => lbChange(action, body)));
+    return span;
+  };
+  for (const k of lb.removed) undo.push(chip(`removed: ${k}`, 'restore', { name: k }));
+  for (const m of lb.merges) undo.push(chip(`${m.from} → ${m.into}`, 'unmerge', { from: m.from }));
+  for (const id of lb.removedMatches) undo.push(chip(`removed match #${id}`, 'restoreMatch', { id }));
+  $('lbUndo').replaceChildren(...undo);
+  $('lbUndoReset').hidden = !lb.resetAt;
+  if (lb.resetAt) $('lbUndoReset').textContent = `Undo reset (${new Date(lb.resetAt.at).toLocaleString()})`;
+}
+
+async function loadLeaderboard() {
+  try {
+    const response = await fetch('/admin/api/stats');
+    if (!response.ok) { $('lbState').textContent = `leaderboard: HTTP ${response.status}`; return; }
+    lb = await response.json();
+    renderLeaderboard();
+  } catch (e) {
+    $('lbState').textContent = 'leaderboard failed: ' + (e && e.message || e);
+  }
+}
+
+async function lbChange(action, extra = {}) {
+  if (!$('pw').value) { $('lbState').textContent = 'unlock with the password first'; return; }
+  const response = await fetch('/admin/api/stats', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: $('pw').value, action, ...extra }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) { $('lbState').textContent = body.error || `HTTP ${response.status}`; return; }
+  lb = body;
+  $('lbState').textContent = `done: ${action}`;
+  renderLeaderboard();
+}
+
+$('lbFilter').addEventListener('input', renderLeaderboard);
+$('lbReset').addEventListener('click', () => {
+  if (confirm('Reset the leaderboard? Everything played so far stops counting (Undo reset brings it back).')) lbChange('reset');
+});
+$('lbUndoReset').addEventListener('click', () => lbChange('undoReset'));
+
 // --- map pk3 upload / delete (gateway /admin/api/paks) ----------------------------
 
 function fmtSize(n) {
@@ -880,6 +1022,7 @@ loadChatVote();
 setInterval(loadChatVote, 5000);
 loadMutators();
 setInterval(loadMutators, 10000);
+loadLeaderboard();
 </script>
 </body>
 </html>

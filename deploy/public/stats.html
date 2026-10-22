@@ -155,7 +155,7 @@ async function load() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     data = await r.json();
     $('updated').textContent = data.enabled
-      ? `live · updates every 10 s`
+      ? `live · updates every 10 s` + (data.since ? ` · counting since ${new Date(data.since).toLocaleString()}` : '')
       : 'stats are off on this server (STATS_LOG empty)';
     render();
   } catch (e) {

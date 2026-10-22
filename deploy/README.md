@@ -331,6 +331,15 @@ frags show up within seconds. Players are keyed by name (color codes
 stripped); bots are hidden unless *include bots* is ticked. To reset the
 stats, delete `games.log` from the server-state volume.
 
+**Clean-up** (admin panel → *Leaderboard*): **remove** a player (their row and
+every kill they were part of, both ways), **merge** two names one person
+used into one player, **remove** a match from the stats, or **reset** the
+leaderboard so only what is played from now on counts. `games.log` is never
+changed — the choices live in `stats-admin.json` next to `PRESETS_FILE`
+(override with `STATS_ADMIN_FILE`) and are applied while the log is parsed,
+so every one of them has an *undo*. API: `GET /admin/api/stats`, `POST
+/admin/api/stats {password, action: remove|restore|merge|unmerge|removeMatch|restoreMatch|reset|undoReset, ...}`.
+
 ## Cloudflare caching for PK3 downloads
 
 Every new browser downloads ~530 MB of paks once. Behind Cloudflare these can
