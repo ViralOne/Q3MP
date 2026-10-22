@@ -75,16 +75,21 @@ const refused = (socket, status, text) => {
 // --- out-of-band UDP queries to the game server -------------------------------
 
 // Send one datagram, collect every reply for `waitMs`, then close the socket.
-function udpQuery(payload, waitMs) {
+// settleMs: once a reply has arrived, stop after this much silence instead of
+// waiting out the whole waitMs (0 = the first reply is the whole answer).
+// The server writes a long rcon output as several packets back to back.
+function udpQuery(payload, waitMs, settleMs = 100) {
   return new Promise((resolve) => {
     const udp = createSocket("udp4");
     const replies = [];
     let pending = true;
+    let settle = null;
 
     const finish = () => {
       if (!pending) return;
       pending = false;
       clearTimeout(timer);
+      clearTimeout(settle);
       try { udp.close(); } catch { /* already closed */ }
       resolve(replies);
     };
@@ -92,11 +97,15 @@ function udpQuery(payload, waitMs) {
     const timer = setTimeout(finish, waitMs);
     timer.unref?.();
 
-    udp.on("message", (message) => replies.push(message.toString("latin1")));
+    udp.on("message", (message) => {
+      replies.push(message.toString("latin1"));
+      clearTimeout(settle);
+      settle = setTimeout(finish, settleMs);
+    });
     udp.on("error", finish);
 
     udp.send(payload, options.targetPort, options.targetHost, () => {
-      // keep listening until the timeout collects every response fragment
+      // keep listening until the reply has settled or the timeout passes
     });
   });
 }
@@ -132,7 +141,7 @@ function parseStatus(blobs) {
 let statusCache = { at: 0, promise: null };
 function serverStatus() {
   if (statusCache.promise && Date.now() - statusCache.at < 2000) return statusCache.promise;
-  statusCache = { at: Date.now(), promise: udpQuery(OOB("getstatus"), 700).then(parseStatus) };
+  statusCache = { at: Date.now(), promise: udpQuery(OOB("getstatus"), 700, 0).then(parseStatus) };
   return statusCache.promise;
 }
 
