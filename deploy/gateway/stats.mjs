@@ -4,17 +4,20 @@
 // by MOD_X", "ClientUserinfoChanged: <slot> n\Name\...", "InitGame:", "Exit:",
 // "score: N ping: P client: <slot> Name" — so the whole history can be rebuilt
 // from the file at any time: no database, and stats survive restarts because
-// the log lives on the server's state volume. The file is re-read from the last
-// offset every few seconds; a shrunk/rotated file is parsed again from scratch.
+// the log lives on the server's state volume. New lines are read from the last
+// offset as soon as the file changes (fs.watch, with a slow poll as fallback);
+// a shrunk/rotated file is parsed again from scratch.
 //
 // Env:
 //   STATS_LOG   path to games.log (default /state/baseq3/games.log; empty = off)
 
-import { openSync, readSync, fstatSync, closeSync } from "node:fs";
+import { openSync, readSync, fstatSync, closeSync, watch } from "node:fs";
+import { basename, dirname } from "node:path";
 
 const logPath = process.env.STATS_LOG ?? "/state/baseq3/games.log";
-// 1 s: the chat mode vote (chatvote.mjs) reacts to chat through this follower
-const POLL_MS = 1000;
+// fallback only: changes are normally picked up right away through fs.watch,
+// which the chat mode vote (chatvote.mjs) relies on to answer quickly
+const POLL_MS = 3000;
 const RECENT_MATCHES = 15;
 
 const WEAPONS = {
@@ -51,6 +54,8 @@ function emptyState() {
 let state = emptyState();
 let offset = 0;
 let carry = "";
+// false only while reading what the log already held at start-up
+let primed = false;
 const listeners = [];
 
 // Other modules (the chat mode vote) get every new log line as it arrives;
@@ -170,11 +175,12 @@ function poll() {
   try {
     fd = openSync(logPath, "r");
   } catch {
-    return;                                        // no log yet
+    primed = true;                                 // no log yet: all of it will be new
+    return;
   }
   try {
     const size = fstatSync(fd).size;
-    const live = offset > 0;
+    const live = primed;
     if (size < offset) {                           // rotated or truncated
       state = emptyState();
       offset = 0;
@@ -194,6 +200,7 @@ function poll() {
     }
   } finally {
     closeSync(fd);
+    primed = true;
   }
 }
 
@@ -204,7 +211,21 @@ export function startStats(log = console.log) {
   }
   poll();
   setInterval(poll, POLL_MS).unref?.();
-  log(`stats: following ${logPath}`);
+  // watch the directory, not the file: games.log may not exist yet, and a
+  // rotated log is a new file under the same name
+  let queued = false;
+  try {
+    const name = basename(logPath);
+    watch(dirname(logPath), { persistent: false }, (_event, file) => {
+      if (file && file !== name) return;
+      if (queued) return;
+      queued = true;
+      setImmediate(() => { queued = false; poll(); });
+    }).on("error", (e) => log(`stats: watch stopped (${e.message}); polling every ${POLL_MS / 1000} s`));
+    log(`stats: following ${logPath}`);
+  } catch (e) {
+    log(`stats: following ${logPath} (polling every ${POLL_MS / 1000} s: ${e.message})`);
+  }
 }
 
 function topOf(counts, n) {
