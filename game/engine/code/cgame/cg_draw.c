@@ -2537,6 +2537,8 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 
 	if ( cg.snap->ps.pm_type == PM_INTERMISSION ) {
 		CG_DrawIntermission();
+		// the map vote ballot is a center print over the scoreboard
+		CG_DrawCenterString();
 		return;
 	}
 

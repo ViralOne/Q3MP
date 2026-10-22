@@ -327,6 +327,8 @@ struct gclient_s {
 #define	MAX_SPAWN_VARS			64
 #define	MAX_SPAWN_VARS_CHARS	4096
 
+#define MAPVOTE_CHOICES	3
+
 typedef struct {
 	struct gclient_s	*clients;		// [maxclients]
 
@@ -408,6 +410,16 @@ typedef struct {
 #ifdef MISSIONPACK
 	int			portalSequence;
 #endif
+
+	// end-of-match map vote (g_mapvote): ballot shown over the intermission
+	qboolean	mapvoteActive;
+	int			mapvoteEndTime;
+	int			mapvoteNextUpdate;
+	int			mapvoteCount;
+	char		mapvoteMaps[MAPVOTE_CHOICES][MAX_QPATH];
+	int			mapvoteChoice[MAX_CLIENTS];	// 0 = no vote, else 1..mapvoteCount
+	char		mapvoteWinner[MAX_QPATH];
+	int			mapvoteDecidedTime;
 } level_locals_t;
 
 
@@ -601,6 +613,9 @@ void DeathmatchScoreboardMessage( gentity_t *ent );
 //
 void MoveClientToIntermission( gentity_t *ent );
 void FindIntermissionPoint( void );
+void MapVote_Start( void );
+qboolean MapVote_Think( void );
+qboolean MapVote_Cast( gentity_t *ent, const char *text );
 void SetLeader(int team, int client);
 void CheckTeamLeader( int team );
 void G_RunThink (gentity_t *ent);
@@ -721,6 +736,10 @@ extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCK
 // arena ammo: a real count (bots treat -1 as "no ammo" and never fire),
 // topped up every second so it never runs out
 #define WEAPONMODE_AMMO		999
+
+extern	vmCvar_t	g_mapvote;			// end-of-match map vote on/off
+extern	vmCvar_t	g_mapvoteTime;		// seconds the ballot stays open
+extern	vmCvar_t	g_mapvoteMaps;		// space-separated candidate pool ("" = maps on disk)
 extern	vmCvar_t	g_password;
 extern	vmCvar_t	g_needpass;
 extern	vmCvar_t	g_gravity;

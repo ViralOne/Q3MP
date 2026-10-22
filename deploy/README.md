@@ -181,6 +181,21 @@ applies on map load — the presets reload the map for you):
 In both, every weapon, ammo, armor, health and powerup pickup is removed from
 the map (CTF flags stay) and dead players drop nothing. Bots play both modes.
 
+## End-of-match map vote
+
+When a match ends, a ballot with three maps appears over the scoreboard and
+players pick the next one by typing **1**, **2** or **3** in chat (`T`), or
+`/mapvote 2` in the console. Candidates come from the current game-mode
+preset's rotation (`g_mapvoteMaps`, set by the preset) or, without one, from
+every map on the server that fits the gametype (CTF maps for CTF, no CTF or
+tourney maps otherwise). The vote closes after `g_mapvoteTime` seconds
+(default 15) or as soon as every human player has voted; the most voted map
+loads next (ties broken at random), and with no votes the normal rotation
+continues. Bots do not vote. Duels skip it (they restart instead of changing
+map). Turn it off with the *end-of-match map vote* flag in the admin panel
+(`g_mapvote 0`). Server-side code is the fork's `qagame`; the ballot is drawn
+by the fork's `cgame` (`zz-cgame.pk3`, downloaded by the launcher).
+
 ## Bots
 
 Bots only move on maps with bot navigation (`maps/<name>.aas`). The

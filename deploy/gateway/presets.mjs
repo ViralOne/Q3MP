@@ -128,6 +128,13 @@ export function presetCommands(preset, availableMaps) {
   const settings = [`g_gametype ${preset.gametype}`,
     ...Object.entries(preset.cvars).map(([cvar, value]) => `set ${cvar} ${value}`)];
   const commands = [`set q3preset "${settings.join(" ; ")}"`, "vstr q3preset"];
+  // the end-of-match map vote offers maps from this rotation (cvar max ~250)
+  let pool = "";
+  for (const map of maps) {
+    if ((pool + " " + map).length > 240) break;
+    pool = pool ? `${pool} ${map}` : map;
+  }
+  commands.push(`set g_mapvoteMaps "${pool}"`);
   maps.forEach((map, i) => {
     const next = i + 1 < maps.length ? i + 2 : 1;
     commands.push(`set d${i + 1} "map ${map} ; set nextmap vstr d${next}"`);

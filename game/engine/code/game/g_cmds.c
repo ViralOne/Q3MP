@@ -877,6 +877,11 @@ void G_Say( gentity_t *ent, gentity_t *target, int mode, const char *chatText ) 
 	char		text[MAX_SAY_TEXT];
 	char		location[64];
 
+	// "1" / "2" / "3" in chat during the end-of-match map vote is a ballot
+	if ( MapVote_Cast( ent, chatText ) ) {
+		return;
+	}
+
 	if ( g_gametype.integer < GT_TEAM && mode == SAY_TEAM ) {
 		mode = SAY_ALL;
 	}
@@ -1769,6 +1774,15 @@ void ClientCommand( int clientNum ) {
 #endif
 	if (Q_stricmp (cmd, "score") == 0) {
 		Cmd_Score_f (ent);
+		return;
+	}
+	if (Q_stricmp (cmd, "mapvote") == 0) {
+		char arg[16];
+
+		trap_Argv( 1, arg, sizeof( arg ) );
+		if ( !MapVote_Cast( ent, arg ) ) {
+			trap_SendServerCommand( ent - g_entities, "print \"No map vote running (or not a valid choice)\n\"" );
+		}
 		return;
 	}
 

@@ -47,6 +47,9 @@ vmCvar_t	g_friendlyFire;
 
 vmCvar_t	g_scoreKeep;
 vmCvar_t	g_weaponMode;
+vmCvar_t	g_mapvote;
+vmCvar_t	g_mapvoteTime;
+vmCvar_t	g_mapvoteMaps;
 vmCvar_t	g_password;
 vmCvar_t	g_needpass;
 vmCvar_t	g_maxclients;
@@ -129,6 +132,10 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_scoreKeep, "g_scoreKeep", "1", CVAR_ARCHIVE, 0, qtrue  },
 	// weapon arenas; latched so the item layout and loadout change together on map load
 	{ &g_weaponMode, "g_weaponMode", "0", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse  },
+	// end-of-match map vote
+	{ &g_mapvote, "g_mapvote", "1", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_mapvoteTime, "g_mapvoteTime", "15", CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_mapvoteMaps, "g_mapvoteMaps", "", CVAR_ARCHIVE, 0, qfalse  },
 
 	{ &g_teamAutoJoin, "g_teamAutoJoin", "0", CVAR_ARCHIVE  },
 	{ &g_teamForceBalance, "g_teamForceBalance", "0", CVAR_ARCHIVE  },
@@ -1039,7 +1046,286 @@ void BeginIntermission( void ) {
 	// send the current scoring to all clients
 	SendScoreboardMessageToAllClients();
 
+	MapVote_Start();
 }
+
+
+/*
+=============================================================================
+
+END-OF-MATCH MAP VOTE
+
+At intermission the server offers MAPVOTE_CHOICES maps — from g_mapvoteMaps
+(the admin preset's rotation) or else the maps on disk that suit the
+gametype — and players answer by typing 1, 2 or 3 in chat. The intermission
+is held until g_mapvoteTime runs out or every human has voted; the most voted
+map (ties broken at random) is loaded next. Without any vote the regular
+rotation (nextmap) continues.
+
+=============================================================================
+*/
+
+#define MAPVOTE_POOL	64
+
+void ExitLevel( void );
+
+static qboolean MapVote_Allowed( const char *name, const char *current, qboolean checkGametype ) {
+	if ( !name[0] || !Q_stricmp( name, current ) || !Q_stricmp( name, "q3dm0" ) || !Q_stricmpn( name, "test_", 5 ) ) {
+		return qfalse;
+	}
+	if ( !checkGametype ) {
+		return qtrue;
+	}
+	if ( g_gametype.integer == GT_CTF ) {
+		return strstr( name, "ctf" ) != NULL;
+	}
+	return !strstr( name, "ctf" ) && !strstr( name, "tourney" );
+}
+
+static int MapVote_AddUnique( char pool[][MAX_QPATH], int count, const char *name ) {
+	int i;
+
+	for ( i = 0; i < count; i++ ) {
+		if ( !Q_stricmp( pool[i], name ) ) {
+			return count;
+		}
+	}
+	Q_strncpyz( pool[count], name, MAX_QPATH );
+	return count + 1;
+}
+
+static int MapVote_Pool( char pool[][MAX_QPATH], const char *current ) {
+	static char	list[8192];
+	char		name[MAX_QPATH];
+	char		*p, *token;
+	int			count, n, i, len;
+
+	// the admin preset's rotation, when there is one
+	count = 0;
+	trap_Cvar_VariableStringBuffer( "g_mapvoteMaps", list, sizeof( list ) );
+	p = list;
+	while ( count < MAPVOTE_POOL ) {
+		token = COM_Parse( &p );
+		if ( !token[0] ) {
+			break;
+		}
+		Q_strncpyz( name, token, sizeof( name ) );
+		Q_strlwr( name );
+		if ( MapVote_Allowed( name, current, qfalse ) ) {
+			count = MapVote_AddUnique( pool, count, name );
+		}
+	}
+	if ( count >= 2 ) {
+		return count;
+	}
+
+	// otherwise every map on disk that fits the gametype
+	count = 0;
+	n = trap_FS_GetFileList( "maps", ".bsp", list, sizeof( list ) );
+	p = list;
+	for ( i = 0; i < n && count < MAPVOTE_POOL; i++, p += len + 1 ) {
+		len = strlen( p );
+		COM_StripExtension( p, name, sizeof( name ) );
+		Q_strlwr( name );
+		if ( MapVote_Allowed( name, current, qtrue ) ) {
+			count = MapVote_AddUnique( pool, count, name );
+		}
+	}
+	return count;
+}
+
+static int MapVote_Humans( void ) {
+	int i, humans = 0;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( level.clients[i].pers.connected == CON_CONNECTED && !( g_entities[i].r.svFlags & SVF_BOT ) ) {
+			humans++;
+		}
+	}
+	return humans;
+}
+
+void MapVote_Start( void ) {
+	static char	pool[MAPVOTE_POOL][MAX_QPATH];
+	char		current[MAX_QPATH];
+	char		swap[MAX_QPATH];
+	int			count, i, j, seconds;
+
+	level.mapvoteActive = qfalse;
+	level.mapvoteCount = 0;
+	level.mapvoteWinner[0] = '\0';
+
+	// duels restart instead of changing map; nobody to ask without humans
+	if ( !g_mapvote.integer || g_gametype.integer == GT_TOURNAMENT || g_gametype.integer == GT_SINGLE_PLAYER
+		|| !MapVote_Humans() ) {
+		return;
+	}
+
+	trap_Cvar_VariableStringBuffer( "mapname", current, sizeof( current ) );
+	Q_strlwr( current );
+	count = MapVote_Pool( pool, current );
+	if ( count < 2 ) {
+		return;
+	}
+
+	// partial shuffle: the first MAPVOTE_CHOICES entries become the ballot
+	for ( i = 0; i < MAPVOTE_CHOICES && i < count; i++ ) {
+		j = i + rand() % ( count - i );
+		Q_strncpyz( swap, pool[i], sizeof( swap ) );
+		Q_strncpyz( pool[i], pool[j], sizeof( pool[i] ) );
+		Q_strncpyz( pool[j], swap, sizeof( pool[j] ) );
+		Q_strncpyz( level.mapvoteMaps[i], pool[i], sizeof( level.mapvoteMaps[i] ) );
+	}
+	level.mapvoteCount = i;
+	memset( level.mapvoteChoice, 0, sizeof( level.mapvoteChoice ) );
+
+	seconds = g_mapvoteTime.integer;
+	if ( seconds < 5 ) {
+		seconds = 5;
+	} else if ( seconds > 60 ) {
+		seconds = 60;
+	}
+	level.mapvoteEndTime = level.time + seconds * 1000;
+	level.mapvoteNextUpdate = 0;
+	level.mapvoteActive = qtrue;
+
+	G_LogPrintf( "MapVote: start %s %s %s\n", level.mapvoteMaps[0], level.mapvoteMaps[1],
+		level.mapvoteCount > 2 ? level.mapvoteMaps[2] : "" );
+	trap_SendServerCommand( -1, "print \"Vote for the next map: type 1, 2 or 3 in chat\n\"" );
+}
+
+static void MapVote_Tally( int *tally, int *voters ) {
+	int i, c;
+
+	for ( i = 0; i < MAPVOTE_CHOICES; i++ ) {
+		tally[i] = 0;
+	}
+	*voters = 0;
+	for ( i = 0; i < level.maxclients; i++ ) {
+		if ( level.clients[i].pers.connected != CON_CONNECTED || ( g_entities[i].r.svFlags & SVF_BOT ) ) {
+			continue;
+		}
+		c = level.mapvoteChoice[i];
+		if ( c >= 1 && c <= level.mapvoteCount ) {
+			tally[c - 1]++;
+			( *voters )++;
+		}
+	}
+}
+
+// the ballot, drawn by cgame over the scoreboard ("mapvote" server command)
+static void MapVote_Broadcast( const int *tally ) {
+	char	text[512];
+	int		i, left;
+
+	left = ( level.mapvoteEndTime - level.time + 999 ) / 1000;
+	Com_sprintf( text, sizeof( text ), "^3VOTE FOR THE NEXT MAP ^7(%is)\n", left < 0 ? 0 : left );
+	for ( i = 0; i < level.mapvoteCount; i++ ) {
+		Q_strcat( text, sizeof( text ), va( "^3%i^7  %s  [%i]\n", i + 1, level.mapvoteMaps[i], tally[i] ) );
+	}
+	Q_strcat( text, sizeof( text ), "type 1, 2 or 3 in chat (T)" );
+	trap_SendServerCommand( -1, va( "mapvote \"%s\"", text ) );
+}
+
+// Runs every intermission frame; qtrue = hold the intermission.
+qboolean MapVote_Think( void ) {
+	int tally[MAPVOTE_CHOICES];
+	int voters, best, ties, pick, i;
+
+	if ( !level.mapvoteActive ) {
+		// a decided vote shows its result for two seconds, then the map changes
+		if ( level.mapvoteWinner[0] ) {
+			if ( level.time >= level.mapvoteDecidedTime + 2000 ) {
+				ExitLevel();
+			}
+			return qtrue;
+		}
+		return qfalse;
+	}
+
+	MapVote_Tally( tally, &voters );
+	if ( level.time < level.mapvoteEndTime && voters < MapVote_Humans() ) {
+		if ( level.time >= level.mapvoteNextUpdate ) {
+			MapVote_Broadcast( tally );
+			level.mapvoteNextUpdate = level.time + 1000;
+		}
+		return qtrue;
+	}
+
+	level.mapvoteActive = qfalse;
+	best = 0;
+	for ( i = 0; i < level.mapvoteCount; i++ ) {
+		if ( tally[i] > best ) {
+			best = tally[i];
+		}
+	}
+	if ( !best ) {
+		G_LogPrintf( "MapVote: none\n" );
+		trap_SendServerCommand( -1, "mapvote \"^3No votes ^7- next map in the rotation\"" );
+		return qfalse;
+	}
+
+	// ties: a random one of the most voted
+	ties = 0;
+	for ( i = 0; i < level.mapvoteCount; i++ ) {
+		if ( tally[i] == best ) {
+			ties++;
+		}
+	}
+	pick = rand() % ties;
+	for ( i = 0; i < level.mapvoteCount; i++ ) {
+		if ( tally[i] == best && pick-- == 0 ) {
+			break;
+		}
+	}
+	Q_strncpyz( level.mapvoteWinner, level.mapvoteMaps[i], sizeof( level.mapvoteWinner ) );
+	level.mapvoteDecidedTime = level.time;
+	G_LogPrintf( "MapVote: winner %s %i\n", level.mapvoteWinner, best );
+	trap_SendServerCommand( -1, va( "mapvote \"^3Next map: ^7%s ^3(%i vote%s)\"",
+		level.mapvoteWinner, best, best == 1 ? "" : "s" ) );
+	trap_SendServerCommand( -1, va( "print \"Next map: %s\n\"", level.mapvoteWinner ) );
+	return qtrue;
+}
+
+// A chat line or "mapvote N" that answers the ballot: "1", "2", "3",
+// optionally prefixed by "!", "vote" or "mapvote". qtrue = it was a vote.
+qboolean MapVote_Cast( gentity_t *ent, const char *text ) {
+	char	buf[MAX_SAY_TEXT];
+	char	*s;
+	int		n;
+
+	if ( !level.mapvoteActive || !ent->client || ( ent->r.svFlags & SVF_BOT ) ) {
+		return qfalse;
+	}
+	Q_strncpyz( buf, text, sizeof( buf ) );
+	Q_CleanStr( buf );
+	s = buf;
+	while ( *s == ' ' ) {
+		s++;
+	}
+	if ( *s == '!' ) {
+		s++;
+	} else if ( !Q_stricmpn( s, "mapvote ", 8 ) ) {
+		s += 8;
+	} else if ( !Q_stricmpn( s, "vote ", 5 ) ) {
+		s += 5;
+	}
+	while ( *s == ' ' ) {
+		s++;
+	}
+	if ( s[0] < '1' || s[0] > '9' || ( s[1] && s[1] != ' ' ) ) {
+		return qfalse;
+	}
+	n = s[0] - '0';
+	if ( n > level.mapvoteCount ) {
+		return qfalse;
+	}
+	level.mapvoteChoice[ent - g_entities] = n;
+	level.mapvoteNextUpdate = 0;			// refresh the tallies now
+	trap_SendServerCommand( ent - g_entities, va( "print \"You voted for %s\n\"", level.mapvoteMaps[n - 1] ) );
+	return qtrue;
+}
+
 
 
 /*
@@ -1076,7 +1362,10 @@ void ExitLevel (void) {
 	trap_Cvar_VariableStringBuffer( "nextmap", nextmap, sizeof(nextmap) );
 	trap_Cvar_VariableStringBuffer( "d1", d1, sizeof(d1) );
 
-	if( !Q_stricmp( nextmap, "map_restart 0" ) && Q_stricmp( d1, "" ) ) {
+	if ( level.mapvoteWinner[0] ) {
+		// the players' pick; the rotation's nextmap carries on afterwards
+		trap_SendConsoleCommand( EXEC_APPEND, va( "map %s\n", level.mapvoteWinner ) );
+	} else if( !Q_stricmp( nextmap, "map_restart 0" ) && Q_stricmp( d1, "" ) ) {
 		trap_Cvar_Set( "nextmap", "vstr d2" );
 		trap_SendConsoleCommand( EXEC_APPEND, "vstr d1\n" );
 	} else {
@@ -1277,6 +1566,11 @@ void CheckIntermissionExit( void ) {
 			continue;
 		}
 		cl->ps.stats[STAT_CLIENTS_READY] = readyMask;
+	}
+
+	// an open (or just decided) map vote holds the intermission
+	if ( MapVote_Think() ) {
+		return;
 	}
 
 	// never exit in less than five seconds

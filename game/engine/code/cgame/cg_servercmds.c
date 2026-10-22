@@ -1008,6 +1008,12 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	// end-of-match map vote ballot (server g_mapvote), low on the scoreboard
+	if ( !strcmp( cmd, "mapvote" ) ) {
+		CG_CenterPrint( CG_Argv(1), SCREEN_HEIGHT * 0.70, SMALLCHAR_WIDTH );
+		return;
+	}
+
 	if ( !strcmp( cmd, "cs" ) ) {
 		CG_ConfigStringModified();
 		return;
