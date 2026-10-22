@@ -1,3 +1,37 @@
+> [!NOTE]
+> **Q3MP** is a fork of [**lklacar/q3js**](https://github.com/lklacar/q3js) by
+> Luka Klacar — the WebAssembly ioquake3 client, gateway, master server and
+> website below are his work (built on [ioquake3](https://ioquake3.org)).
+> This fork adds a self-hosted stack in [`deploy/`](deploy/README.md) for
+> running your own browser-playable server, with the extras listed under
+> [What this fork adds](#what-this-fork-adds). All credit for the original
+> project goes to its authors; licensing is unchanged (see [License](#license)).
+
+## What this fork adds
+
+Everything lives in [`deploy/`](deploy/README.md) (plus small, flagged
+changes to the game code in `game/engine/code/game` and `code/cgame`):
+
+| Feature | What it does |
+| --- | --- |
+| **All-in-one image** | Game server, WebSocket gateway and Caddy in one container (`deploy/Dockerfile.allinone`), with compose files for a VPS, behind an existing reverse proxy / Cloudflare (`docker-compose.nas.yml`) or as three containers |
+| **Server picker fixes** | Joins insecure (`ws://`) listed servers over `wss` from https pages; official q3js.com servers load q3js's own pure pak set |
+| **Custom maps** | Drop map pk3s into `quake3-data/baseq3/` (or upload them in the admin panel); browsers download exactly what the server hosts |
+| **Map gallery** | Levelshot screenshots of every map on the launcher and in the admin panel, current map highlighted |
+| **Map upload** | Upload / delete map pk3s from the admin panel, validated as maps-only |
+| **Game-mode presets** | One click for FFA, TDM, CTF, Duel, **Instagib** and **Rocket arena**, each with an editable map rotation |
+| **Instagib / Rocket arena** | Weapon-arena modes in the game code (`g_weaponMode`): one weapon, endless ammo, no pickups |
+| **End-of-match map vote** | Players pick the next map from three by typing 1, 2 or 3 in chat |
+| **Smarter bots** | Bot navigation generated with bspc for maps that lack it; auto-fill with a chosen difficulty |
+| **Leaderboard** | `/stats.html`: frags, K/D, wins, favourite weapon, maps and recent matches, from the server's own log |
+| **Admin panel** | Status, rcon console, flags, bots, game modes, map upload (`/admin.html`, password = `RCON_PASSWORD`) |
+| **Health checks** | Container health plus a watchdog that restarts a hung all-in-one container |
+| **Opt-in edge caching** | `PAK_CACHE_CONTROL` for serving paks from Cloudflare when the site is public or behind Cloudflare Access |
+
+See [`deploy/README.md`](deploy/README.md) for setup and details of each.
+
+---
+
 <p align="center">
   <a href="https://q3js.com">
     <picture>

@@ -1,5 +1,9 @@
 # Quake III Arena — self-hosted web server
 
+Part of **Q3MP**, a fork of [lklacar/q3js](https://github.com/lklacar/q3js)
+(credit to Luka Klacar and the ioquake3 authors). Feature overview: the
+[root README](../README.md#what-this-fork-adds).
+
 Browser-based Quake III multiplayer on your own domain, built from the GPL
 ioquake3 engine (as vendored in `../game/engine`) compiled to WebAssembly, with
 a WebSocket-to-UDP gateway and a native Linux `ioq3ded` server — no code from
