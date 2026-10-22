@@ -838,6 +838,11 @@ void ClientThink_real( gentity_t *ent ) {
 
 	if ( client->noclip ) {
 		client->ps.pm_type = PM_NOCLIP;
+	} else if ( client->frozen ) {
+		// freeze tag: no movement, no shooting until thawed
+		client->ps.pm_type = PM_FREEZE;
+		ucmd->buttons = 0;
+		ucmd->forwardmove = ucmd->rightmove = ucmd->upmove = 0;
 	} else if ( client->ps.stats[STAT_HEALTH] <= 0 ) {
 		client->ps.pm_type = PM_DEAD;
 	} else {

@@ -47,6 +47,8 @@ vmCvar_t	g_friendlyFire;
 
 vmCvar_t	g_scoreKeep;
 vmCvar_t	g_weaponMode;
+vmCvar_t	g_freeze;
+vmCvar_t	g_thawTime;
 vmCvar_t	g_unlagged;
 vmCvar_t	g_unlaggedMax;
 vmCvar_t	g_unlaggedDebug;
@@ -135,6 +137,9 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_scoreKeep, "g_scoreKeep", "1", CVAR_ARCHIVE, 0, qtrue  },
 	// weapon arenas; latched so the item layout and loadout change together on map load
 	{ &g_weaponMode, "g_weaponMode", "0", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse  },
+	// freeze tag (team deathmatch); latched like the weapon modes
+	{ &g_freeze, "g_freeze", "0", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse  },
+	{ &g_thawTime, "g_thawTime", "3", CVAR_ARCHIVE, 0, qtrue  },
 	// hitscan lag compensation (unlagged)
 	{ &g_unlagged, "g_unlagged", "1", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_unlaggedMax, "g_unlaggedMax", "400", CVAR_ARCHIVE, 0, qfalse  },
@@ -2180,6 +2185,8 @@ void G_RunFrame( int levelTime ) {
 			ClientEndFrame( ent );
 		}
 	}
+
+	G_FreezeTagFrame();
 
 	// unlagged: remember where everyone is this frame
 	ent = &g_entities[0];

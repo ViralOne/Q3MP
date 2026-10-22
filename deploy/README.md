@@ -185,6 +185,17 @@ applies on map load — the presets reload the map for you):
 In both, every weapon, ammo, armor, health and powerup pickup is removed from
 the map (CTF flags stay) and dead players drop nothing. Bots play both modes.
 
+**Freeze tag** (`g_freeze 1`, latched, team deathmatch): a kill by an enemy
+freezes the victim in place instead of killing them (it still counts as a
+frag) — frozen players cannot move, shoot or be damaged and glow with a
+battle suit shell. A teammate who stands next to a frozen player for
+`g_thawTime` seconds (default 3) thaws them and earns a point. When a whole
+team is frozen the other team wins the round (team score = rounds) and after
+3 seconds everyone respawns for the next round; the preset plays to 7 rounds.
+Deaths to the world (lava, falling) or your own rockets are normal deaths,
+and `/kill` is blocked while frozen. Bots ignore frozen enemies and thaw
+teammates only when they happen to pass by.
+
 ## Unlagged (hitscan lag compensation)
 
 Browser players reach the server through WebSockets (and often Cloudflare),

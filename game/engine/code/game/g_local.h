@@ -330,6 +330,10 @@ struct gclient_s {
 	clientHistory_t	history[UNLAG_HISTORY];
 	int			historyHead;
 	qboolean	unlagShifted;
+	// freeze tag (g_freeze)
+	qboolean	frozen;
+	int			thawProgress;		// ms a teammate has stood by
+	int			thawNotice;			// next "thawing n%" message
 	vec3_t		unlagOrigin, unlagMins, unlagMaxs;
 };
 
@@ -433,6 +437,8 @@ typedef struct {
 	int			mapvoteChoice[MAX_CLIENTS];	// 0 = no vote, else 1..mapvoteCount
 	char		mapvoteWinner[MAX_QPATH];
 	int			mapvoteDecidedTime;
+
+	int			freezeRoundEnd;		// freeze tag: when the next round starts (0 = playing)
 } level_locals_t;
 
 
@@ -627,6 +633,9 @@ void DeathmatchScoreboardMessage( gentity_t *ent );
 void MoveClientToIntermission( gentity_t *ent );
 void FindIntermissionPoint( void );
 void MapVote_Start( void );
+qboolean G_FreezeTagActive( void );
+void G_FreezePlayer( gentity_t *self, gentity_t *attacker, int meansOfDeath );
+void G_FreezeTagFrame( void );
 void G_StoreClientHistory( gentity_t *ent );
 void G_TimeShiftClients( gentity_t *shooter );
 void G_UnTimeShiftClients( gentity_t *shooter );
@@ -753,6 +762,8 @@ extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCK
 // topped up every second so it never runs out
 #define WEAPONMODE_AMMO		999
 
+extern	vmCvar_t	g_freeze;			// freeze tag in team deathmatch (latched)
+extern	vmCvar_t	g_thawTime;			// seconds a teammate needs to thaw someone
 extern	vmCvar_t	g_unlagged;			// hitscan lag compensation on/off
 extern	vmCvar_t	g_unlaggedMax;		// most milliseconds a shot is rewound
 extern	vmCvar_t	g_unlaggedDebug;	// print every rewind

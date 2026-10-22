@@ -84,7 +84,8 @@ void AddScore( gentity_t *ent, vec3_t origin, int score ) {
 	ScorePlum(ent, origin, score);
 	//
 	ent->client->ps.persistant[PERS_SCORE] += score;
-	if ( g_gametype.integer == GT_TEAM )
+	// in freeze tag the team score counts rounds, not frags
+	if ( g_gametype.integer == GT_TEAM && !G_FreezeTagActive() )
 		level.teamScores[ ent->client->ps.persistant[PERS_TEAM] ] += score;
 	CalculateRanks();
 }
@@ -843,6 +844,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		return;
 	}
 
+	// frozen players (freeze tag) are out of reach until thawed
+	if ( targ->client && targ->client->frozen ) {
+		return;
+	}
+
 	// the intermission has already been qualified for, so don't
 	// allow any extra scoring
 	if ( level.intermissionQueued ) {
@@ -1065,6 +1071,12 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		}
 			
 		if ( targ->health <= 0 ) {
+			// freeze tag: an enemy's kill freezes instead (world/self deaths are real)
+			if ( client && G_FreezeTagActive() && attacker->client && attacker != targ
+				&& !OnSameTeam( targ, attacker ) && !level.freezeRoundEnd ) {
+				G_FreezePlayer( targ, attacker, mod );
+				return;
+			}
 			if ( client )
 				targ->flags |= FL_NO_KNOCKBACK;
 
@@ -1253,4 +1265,178 @@ qboolean G_RadiusDamage ( vec3_t origin, gentity_t *attacker, float damage, floa
 	}
 
 	return hitClient;
+}
+
+
+/*
+=============================================================================
+
+FREEZE TAG (g_freeze, team deathmatch)
+
+A kill by an enemy freezes the victim in place instead: frozen players
+cannot move, shoot or be hurt, and wear a battle suit shell. A teammate who
+stays within FREEZE_THAW_RANGE for g_thawTime seconds thaws them. When every
+player of a team is frozen the other team wins the round (one team point),
+and after a short pause everyone respawns for the next round; the fraglimit
+counts rounds. Deaths to the world or yourself are ordinary deaths.
+
+=============================================================================
+*/
+
+#define FREEZE_THAW_RANGE	100
+#define FREEZE_ROUND_PAUSE	3000
+
+qboolean G_FreezeTagActive( void ) {
+	return g_freeze.integer && g_gametype.integer == GT_TEAM;
+}
+
+void G_FreezePlayer( gentity_t *self, gentity_t *attacker, int meansOfDeath ) {
+	gclient_t	*cl = self->client;
+	gentity_t	*ev;
+	const char	*obit;
+
+	obit = ( meansOfDeath >= 0 && meansOfDeath < ARRAY_LEN( modNames ) ) ? modNames[meansOfDeath] : "<bad obituary>";
+	// same log line as a kill, so the frag counts in the stats
+	G_LogPrintf( "Kill: %i %i %i: %s killed %s by %s\n", attacker->s.number, self->s.number, meansOfDeath,
+		attacker->client->pers.netname, cl->pers.netname, obit );
+	G_LogPrintf( "Freeze: %i %i: %s froze %s\n", attacker->s.number, self->s.number,
+		attacker->client->pers.netname, cl->pers.netname );
+
+	ev = G_TempEntity( self->r.currentOrigin, EV_OBITUARY );
+	ev->s.eventParm = meansOfDeath;
+	ev->s.otherEntityNum = self->s.number;
+	ev->s.otherEntityNum2 = attacker->s.number;
+	ev->r.svFlags = SVF_BROADCAST;
+
+	if ( !OnSameTeam( self, attacker ) ) {
+		AddScore( attacker, self->r.currentOrigin, 1 );
+	}
+	cl->ps.persistant[PERS_KILLED]++;
+
+	cl->frozen = qtrue;
+	cl->thawProgress = 0;
+	cl->thawNotice = 0;
+	self->health = cl->ps.stats[STAT_HEALTH] = 1;
+	VectorClear( cl->ps.velocity );
+	memset( cl->ps.powerups, 0, sizeof( cl->ps.powerups ) );
+	cl->ps.powerups[PW_BATTLESUIT] = level.time + 0x7fffff;	// the "frozen" shell
+	trap_SendServerCommand( self - g_entities,
+		"cp \"^5FROZEN\n^7a teammate must stand next to you to thaw you\"" );
+}
+
+static void G_ThawPlayer( gentity_t *ent, gentity_t *by ) {
+	gclient_t *cl = ent->client;
+
+	cl->frozen = qfalse;
+	cl->thawProgress = 0;
+	cl->ps.powerups[PW_BATTLESUIT] = 0;
+	ent->health = cl->ps.stats[STAT_HEALTH] = cl->ps.stats[STAT_MAX_HEALTH];
+	if ( by ) {
+		G_LogPrintf( "Thaw: %i %i: %s thawed %s\n", (int)( by - g_entities ), (int)( ent - g_entities ),
+			by->client->pers.netname, cl->pers.netname );
+		AddScore( by, ent->r.currentOrigin, 1 );
+		trap_SendServerCommand( ent - g_entities, va( "cp \"^7thawed by %s\"", by->client->pers.netname ) );
+		trap_SendServerCommand( by - g_entities, va( "cp \"^7you thawed %s\"", cl->pers.netname ) );
+	}
+}
+
+static void G_FreezeTagNewRound( void ) {
+	gentity_t	*ent;
+	int			i;
+
+	level.freezeRoundEnd = 0;
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		if ( !ent->inuse || !ent->client || ent->client->pers.connected != CON_CONNECTED
+			|| ent->client->sess.sessionTeam == TEAM_SPECTATOR ) {
+			continue;
+		}
+		ClientSpawn( ent );		// clears frozen, full health, spawn weapons
+	}
+	trap_SendServerCommand( -1, "cp \"^7new round!\"" );
+}
+
+void G_FreezeTagFrame( void ) {
+	gentity_t	*ent, *mate, *thawer;
+	gclient_t	*cl;
+	int			i, j, team, players[TEAM_NUM_TEAMS], frozen[TEAM_NUM_TEAMS], winner, loser;
+	int			msec = level.time - level.previousTime;
+
+	if ( !G_FreezeTagActive() || level.intermissiontime || level.warmupTime ) {
+		return;
+	}
+	if ( level.freezeRoundEnd ) {
+		if ( level.time >= level.freezeRoundEnd ) {
+			G_FreezeTagNewRound();
+		}
+		return;
+	}
+
+	memset( players, 0, sizeof( players ) );
+	memset( frozen, 0, sizeof( frozen ) );
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		cl = ent->client;
+		if ( !ent->inuse || !cl || cl->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		team = cl->sess.sessionTeam;
+		if ( team != TEAM_RED && team != TEAM_BLUE ) {
+			continue;
+		}
+		players[team]++;
+		if ( !cl->frozen ) {
+			continue;
+		}
+		frozen[team]++;
+
+		// a living teammate close by thaws over g_thawTime seconds
+		thawer = NULL;
+		for ( j = 0; j < level.maxclients; j++ ) {
+			mate = &g_entities[j];
+			if ( j == i || !mate->inuse || !mate->client || mate->client->pers.connected != CON_CONNECTED
+				|| mate->client->sess.sessionTeam != team || mate->client->frozen || mate->health <= 0 ) {
+				continue;
+			}
+			if ( Distance( mate->r.currentOrigin, ent->r.currentOrigin ) < FREEZE_THAW_RANGE ) {
+				thawer = mate;
+				break;
+			}
+		}
+		if ( !thawer ) {
+			cl->thawProgress = 0;
+			continue;
+		}
+		cl->thawProgress += msec;
+		if ( cl->thawProgress >= g_thawTime.integer * 1000 ) {
+			G_ThawPlayer( ent, thawer );
+			frozen[team]--;
+		} else if ( level.time >= cl->thawNotice ) {
+			cl->thawNotice = level.time + 500;
+			trap_SendServerCommand( i, va( "cp \"^5thawing %i%%\"",
+				cl->thawProgress * 100 / ( g_thawTime.integer * 1000 ) ) );
+		}
+	}
+
+	// a team with everyone frozen loses the round
+	winner = loser = 0;
+	if ( players[TEAM_RED] && players[TEAM_BLUE] ) {
+		if ( frozen[TEAM_RED] == players[TEAM_RED] ) {
+			winner = TEAM_BLUE;
+			loser = TEAM_RED;
+		} else if ( frozen[TEAM_BLUE] == players[TEAM_BLUE] ) {
+			winner = TEAM_RED;
+			loser = TEAM_BLUE;
+		}
+	}
+	if ( !winner ) {
+		return;
+	}
+	level.teamScores[winner]++;
+	CalculateRanks();
+	G_LogPrintf( "FreezeRound: %s wins (%i - %i)\n", TeamName( winner ),
+		level.teamScores[TEAM_RED], level.teamScores[TEAM_BLUE] );
+	trap_SendServerCommand( -1, va( "cp \"%s^7 team wins the round\n^7%s team is frozen\"",
+		winner == TEAM_RED ? "^1Red" : "^4Blue", loser == TEAM_RED ? "^1red" : "^4blue" ) );
+	level.freezeRoundEnd = level.time + FREEZE_ROUND_PAUSE;
 }
