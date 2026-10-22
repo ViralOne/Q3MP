@@ -246,6 +246,18 @@ The admin panel's *Mutators* card stacks extra rules on top of any mode:
 | **Grappling hook** | `g_grapple 1` | everyone carries the hook — mouse wheel, or `weapon 10` in the console |
 | **Quad for all** | `g_quadAll 1` | permanent quad damage for everyone |
 
+## Rules editor
+
+The admin panel's *Rules* card shows the live values of the match rules the
+server runs right now (`GET /admin/api/settings`, fetched with a row of rcon
+queries) — viewable without unlocking; after unlock the fields are editable.
+Changed rows get a red *changed* tag, **Apply changes** sends `set <name>
+<value>` for each, and the card re-reads the server afterwards. Rows marked
+*preset* (knockback, move speed, gravity, weapon mode, freeze tag) are set by
+the mode presets; most users should change modes there instead. Freeze tag
+and weapon mode only take effect after a map restart, which the card shows
+("restart applies: x").
+
 The choice is saved in `PRESETS_FILE`, laid over every preset, and put back
 by the gateway after a server restart (it compares the serverinfo after each
 map load and once a minute). Gravity, rocket jumps and vampire apply at once;
@@ -453,6 +465,11 @@ anyone who knows the password could otherwise use the panel.
 - **Fullscreen**: browsers can exit fullscreen/pointer-lock on ESC — the
   `fullscreen` button (bottom-right, hidden while the game owns the mouse)
   restores it in one click; it flips to `window` while fullscreen is active.
+- **ESC resume**: after ESC has dropped fullscreen, a pill ("back to
+  fullscreen + mouse") shows over the game; one click on it — or on the game
+  itself — re-enters fullscreen and pointer lock in a single gesture, and
+  `F2` does the same from the keyboard (requests had to be in the same
+  synchronous gesture: an awaited fullscreen call makes pointer lock refused).
 - **Mouse wheel sensitivity**: the toolbar's `wheel −` / `wheel +` buttons set
   `in_wheelPx` — pixels of wheel scroll per weapon step (lower = more
   sensitive). It takes effect immediately and is remembered per browser

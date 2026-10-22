@@ -81,6 +81,12 @@
   #playbar button { background:rgba(20,20,20,.85); border:1px solid #444; color:#bbb;
     font:inherit; font-size:11px; padding:5px 10px; border-radius:3px; cursor:pointer; }
   #playbar button:hover { border-color:#d94a36; color:#fff; }
+#resume { position:absolute; left:50%; transform:translateX(-50%); bottom:56px;
+  background:rgba(20,20,20,.85); border:1px solid #d94a36; border-radius:16px;
+  color:#eee; font-size:12px; padding:6px 14px; cursor:pointer; user-select:none;
+  z-index:20; display:none; }
+#resume.on { display:block; }
+#resume:hover { color:#fff; border-color:#fff; }
   #joinfail { position:fixed; top:16px; left:50%; transform:translateX(-50%);
     display:flex; gap:14px; align-items:center; z-index:6; background:#141414ee;
     border:1px solid #d94a36; color:#eee; font:inherit; font-size:12px;
@@ -142,6 +148,7 @@
   <button id="fsBtn" title="Fullscreen requires a click; press ESC to free the mouse first if the game has it">fullscreen</button>
   <button id="logBtn" title="F1 also toggles">logs (F1)</button>
 </div>
+<div id="resume">click here or press F2 — back to fullscreen + mouse</div>
 
 <script>
 // Surface module script failures on screen instead of silently dead buttons.
@@ -257,6 +264,14 @@ function fullscreenElementOk() {
   return !!(root.requestFullscreen || root.webkitRequestFullscreen) ? root : null;
 }
 
+// ESC in Chrome/Safari drops fullscreen together with pointer lock, and only
+// a user gesture can bring fullscreen back — but the fullscreen button is a
+// small target in the corner. This pill (shown once the game has been
+// fullscreen this session) re-enters fullscreen AND pointer lock with one
+// click or the F2 key, no matter where the mouse is.
+const resumeEl = document.getElementById('resume');
+let fullscreenSeen = false;
+
 fsBtn.addEventListener('click', () => {
   const el = fullscreenElementOk();
   if (!el) { logLine('this browser does not support fullscreen'); return; }
@@ -269,6 +284,8 @@ fsBtn.addEventListener('click', () => {
 const syncFullscreenLabel = () => {
   const active = document.fullscreenElement || document.webkitFullscreenElement;
   fsBtn.textContent = active ? 'window' : 'fullscreen';
+  if (active) fullscreenSeen = true;
+  updateResume();
 };
 document.addEventListener('fullscreenchange', syncFullscreenLabel);
 document.addEventListener('webkitfullscreenchange', syncFullscreenLabel);
@@ -277,13 +294,81 @@ document.addEventListener('webkitfullscreenchange', syncFullscreenLabel);
 // must swallow to leave pointer lock) brings it back together with the cursor.
 document.addEventListener('pointerlockchange', () => {
   playbar.classList.toggle('show', document.pointerLockElement == null);
+  updateResume();
 });
+
+function updateResume() {
+  const joining = document.getElementById('joinfail');
+  const show = engineModule && fullscreenSeen
+    && !(document.fullscreenElement || document.webkitFullscreenElement)
+    && (!joining || joining.style.display === 'none');
+  resumeEl.classList.toggle('on', !!show);
+}
+
+function resumeFull() {
+  logLine('resume: fullscreen + pointer lock');
+  // both must be requested inside the same synchronous gesture: an awaited
+  // fullscreen promise already counts as "async" and pointer lock then gets
+  // refused ("requires a user gesture")
+  const canvas = engineModule && (engineModule.canvas || document.querySelector('canvas'));
+  if (canvas && !document.pointerLockElement) {
+    try {
+      const p = canvas.requestPointerLock();
+      Promise.resolve(p).then(
+        () => logLine('resume: pointer lock ok'),
+        (e) => logLine(`resume: pointer lock refused: ${e && e.message || e}`));
+    } catch (e) { logLine(`resume: lock failed: ${e && e.message || e}`); }
+  }
+  const el = fullscreenElementOk();
+  if (el && !(document.fullscreenElement || document.webkitFullscreenElement)) {
+    try {
+      if (el.requestFullscreen) {
+        el.requestFullscreen().then(
+          () => logLine('resume: fullscreen ok'),
+          (e) => logLine(`resume: fullscreen failed: ${e && e.message || e}`));
+      } else el.webkitRequestFullscreen();
+    } catch (e) {
+      logLine(`resume: fullscreen failed: ${e && e.message || e}`);
+    }
+  }
+  // browsers keep a short cooldown after an ESC-enforced lock exit, so if the
+  // synchronous try was refused, one late retry (needs no gesture this time:
+  // pointer lock may be allowed right after fullscreen finished)
+  setTimeout(() => {
+    if (!canvas || document.pointerLockElement) return;
+    try {
+      const p = canvas.requestPointerLock();
+      Promise.resolve(p).catch(() => {});
+    } catch { /* done trying */ }
+  }, 1400);
+}
+document.addEventListener('pointerlockerror', () => logLine('resume: pointer lock error'));
+// while the pill shows, a click on the game itself resumes fullscreen + mouse
+// in the same gesture (the engine gets the pointer lock on its own afterwards)
+document.addEventListener('mousedown', (e) => {
+  if (resumeEl.classList.contains('on') && e.target && e.target.closest
+    && e.target.closest('canvas')) {
+    e.preventDefault();
+    logLine('resume: canvas click');
+    resumeFull();
+  }
+}, true);
+resumeEl.addEventListener('click', resumeFull);
+// F2: nothing in the game menus uses it, so it can restore safely everywhere
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'F2') {
+    e.preventDefault();
+    logLine(resumeEl.classList.contains('on') ? 'resume: F2 (pill visible)' : 'resume: F2 (nothing to restore)');
+    if (resumeEl.classList.contains('on')) resumeFull();
+  }
+}, true);
+setInterval(updateResume, 1000);
 
 const realError = console.error;
 console.error = (...a) => { realError(...a); logLine(a.map(String).join(' ')); };
 // (the start page's Chat commands card has the how-to; this log opens on
 // F1 / the logs button, or by itself on errors)
-logLine('[keys] ESC = game menu (quit/team) · ~ = game console · F1 = this log · fullscreen button bottom-right');
+logLine('[keys] ESC = game menu (quit/team) · ~ = game console · F1 = this log · F2 = fullscreen + mouse back · fullscreen button bottom-right');
 logLine('[vote] T = chat: !modes · !mode insta · !yes / !no · 1 2 3 = next map at match end');
 
 function say(msg) { statusEl.textContent = msg; logLine(msg); }

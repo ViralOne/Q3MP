@@ -25,6 +25,20 @@
   .mutGrid input { accent-color:#d94a36; margin-top:2px; }
   .mutGrid b { color:#eee; font-weight:700; display:block; }
   .mutGrid .live { color:#d94a36; font-size:10px; margin-left:4px; }
+  .setGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
+  .setGrid .cell { border:1px solid #1f1f1f; border-radius:4px; padding:8px 10px; }
+  .setGrid label { color:#999; font-size:11px; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px; }
+  .setGrid .cell input, .setGrid .cell select { width:100%; box-sizing:border-box; }
+  .setGrid .note { color:#666; font-size:10px; margin-top:4px; line-height:1.35; }
+  .setGrid .cell.latched .note b { color:#d9a236; }
+  .setGrid .cell.dirty { border-color:#d94a36; }
+  .setGrid .cell.dirty label::after { content:' changed'; color:#d94a36; font-size:9px; letter-spacing:0; text-transform:lowercase; }
+  .setGrid .cell.adv { opacity:.82; border:1px dashed #4a4442; }
+  .setGrid .cell.adv label::after { content:' preset'; color:#d94a36; font-size:9px; letter-spacing:0; text-transform:lowercase; }
+  .setGrid .cell.wide { grid-column: 1 / -1; display:flex; gap:16px; align-items:center; }
+  .setGrid .cell.wide label { margin:0; white-space:nowrap; }
+  .setGrid .cell.wide input, .setGrid .cell.wide select { width:170px; }
+  .setGrid .cell.wide .note { margin:0; flex:1; }
   .lbTable { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px; }
   .lbTable td, .lbTable th { padding:4px 6px; border-bottom:1px solid #1f1f1f; text-align:left; }
   .lbTable th { color:#888; font-weight:400; font-size:10px; text-transform:uppercase; letter-spacing:1px; }
@@ -37,8 +51,9 @@
   .lbUndo button { padding:0 6px; margin-left:6px; font-size:11px; background:#222; color:#bbb; }
   button { background:#d94a36; border:0; color:#fff; font:inherit; padding:7px 14px;
     cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
+  button:disabled { background:#26262a; color:#666; border:1px solid #333; cursor:default; }
+  button.ghost:disabled { background:#1a1a1a; color:#555; }
   button.ghost { background:#222; color:#bbb; }
-  button:disabled { background:#552; color:#996; cursor:default; }
   table { border-collapse:collapse; font-size:12px; width:100%; }
   th, td { text-align:left; padding:4px 10px 4px 0; color:#bbb; }
   th { color:#777; font-weight:400; text-transform:uppercase; font-size:10px; }
@@ -151,22 +166,17 @@
   </div>
   <div class="kv" id="mapInfo" style="font-size:12px;margin-bottom:8px">loading the map list from the server paks…</div>
   <div id="mapGrid"></div>
-  <div class="row">
-    <label class="kv" for="gt">Gametype:</label>
-    <select id="gt">
-      <option value="0">FFA (0)</option>
-      <option value="1">Tournament 1v1 (1)</option>
-      <option value="3">Team Deathmatch (3)</option>
-      <option value="4">CTF (4)</option>
-    </select>
-    <button class="ghost" data-cmd="g_gametype %gt%">Set (applies next map)</button>
-    <label class="kv" for="fl">Fraglimit:</label>
-    <input id="fl" size="4" value="20">
-    <button class="ghost" data-cmd="fraglimit %fl%">Set</button>
-    <label class="kv" for="tl">Timelimit:</label>
-    <input id="tl" size="4" value="15">
-    <button class="ghost" data-cmd="timelimit %tl%">Set</button>
+</div>
+
+<div class="card">
+  <h2>Rules</h2>
+  <div id="rulesGrid" class="setGrid"></div>
+  <div class="row" style="margin-top:10px">
+    <button class="ghost" id="rulesReload" title="read the current values from the server">Refresh</button>
+    <button id="rulesApply" disabled>Apply changes</button>
+    <span class="kv" id="rulesState" style="font-size:12px">unlock to load the current values</span>
   </div>
+  <div class="kv" style="font-size:12px">muted entries are preset territory — the Game mode presets set weapon mode, freeze tag, gravity and knockback; only touch them if you know why</div>
 </div>
 
 <div class="card">
@@ -283,6 +293,7 @@ async function unlock() {
       sessionStorage.setItem(pwKey, pw);
       $('pwState').textContent = 'unlocked — password accepted for this browser tab';
       loadPaks();
+      loadRules(true);                     // values are already shown; re-render to unlock the inputs
       return true;
     }
     $('pwState').textContent =
@@ -295,6 +306,9 @@ async function unlock() {
 }
 $('unlock').addEventListener('click', unlock);
 $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+// coming back to the panel in the same tab: the remembered password is
+// already in the box, so unlock right away instead of needing a click
+if ($('pw').value) { unlock(); }
 
 function out(text) { $('out').textContent = text + '\n\n' + $('out').textContent.slice(0, 8000); }
 let busy = false;
@@ -331,6 +345,126 @@ async function rcon(command) {
     busy = false;
   }
 }
+
+// --- rules editor (GET /admin/api/settings, apply via rcon set) ----------------
+
+const RULE_META = {
+  fraglimit: { label: 'frag limit', int: true, note: 'frags (or rounds) that end a map' },
+  timelimit: { label: 'time limit', int: true, note: 'minutes per map' },
+  capturelimit: { label: 'capture limit', int: true, note: 'CTF: captures that end a map (0 = off)' },
+  g_gametype: { label: 'gametype', adv: true, select: [['0', 'FFA'], ['1', 'duel (1v1)'], ['3', 'team DM'], ['4', 'CTF']], note: 'applies at the next map load — presets set this too' },
+  bot_minplayers: { label: 'bots keep', int: true, note: 'keep the map this full with bots (0 = off)' },
+  g_allowvote: { label: 'vote command', bool: true, note: 'the in-game /vote command' },
+  g_knockback: { label: 'knockback', int: true, adv: true, note: 'default 1000 · Excessive uses 2000' },
+  g_speed: { label: 'move speed', int: true, adv: true, note: 'default 320' },
+  g_gravity: { label: 'gravity', int: true, adv: true, note: 'default 800 · presets set this too' },
+  g_weaponmode: { label: 'weapon mode', adv: true, select: [['0', '0 · standard'], ['1', '1 · instagib'], ['2', '2 · rockets'], ['3', '3 · excessive'], ['4', '4 · gun game']], note: 'with a preset, or here + restart' },
+  g_freeze: { label: 'freeze tag', bool: true, adv: true, wide: true, note: 'freezes need a map restart — the Freeze tag preset handles the details' },
+};
+let rulesSaved = null;          // values from the last load, { name: string }
+
+function rulesState(text) { $('rulesState').textContent = text; }
+
+async function loadRules(quiet) {
+  // values are public like the mutators' list; only applying needs unlock
+  if (!quiet) { $('rulesState').textContent = 'reading the server…'; }
+  try {
+    const response = await fetch('/admin/api/settings', { cache: 'no-store' });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { rulesState(body.error || `HTTP ${response.status}`); return; }
+    rulesSaved = {};
+    for (const c of body.cvars) rulesSaved[c.name.toLowerCase()] = c;
+    renderRules();
+    rulesState($('pw').value ? 'values read from the server' : 'read-only view — unlock to change');
+  } catch (e) {
+    rulesState('load failed: ' + (e && e.message || e));
+  }
+}
+
+function renderRules() {
+  const grid = $('rulesGrid');
+  grid.replaceChildren();
+  for (const [name, c] of Object.entries(rulesSaved ?? {})) {
+    const meta = RULE_META[name] || { label: name, int: true };
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (meta.adv ? ' adv' : '') + (meta.wide ? ' wide' : '')
+      + (c.latched !== '' ? ' latched' : '');
+    cell.dataset.name = name;
+    const label = document.createElement('label');
+    label.textContent = meta.label + ' · ' + name;
+    cell.append(label);
+    let input;
+    if (meta.select) {
+      input = document.createElement('select');
+      for (const [v, t] of meta.select) input.append(new Option(t, v));
+    } else if (meta.bool) {
+      input = document.createElement('select');
+      input.append(new Option('off (0)', '0'), new Option('on (1)', '1'));
+    } else {
+      input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.step = '1';
+      input.addEventListener('focus', () => input.select());   // replace instead of append
+    }
+    input.value = c.value || '0';
+    input.id = 'rule_' + name;
+    input.disabled = !$('pw').value;         // read-only view until unlocked
+    if (input.disabled) input.title = 'unlock to change';
+    input.addEventListener('input', () => markRulesDirty());
+    input.addEventListener('change', () => markRulesDirty());
+    const note = document.createElement('div');
+    note.className = 'note';
+    note.innerHTML = c.latched !== ''
+      ? (meta.note ? meta.note + '<br>' : '') + `<b>restart applies: ${c.latched || '—'}</b>`
+      : (meta.note || '');
+    cell.append(input, note);
+    grid.append(cell);
+  }
+}
+
+// which edited rows differ from the server, as { name, value }
+function rulesChanged() {
+  const changed = [];
+  for (const [name, c] of Object.entries(rulesSaved ?? {})) {
+    const meta = RULE_META[name] || { int: true };
+    const input = $('rule_' + name);
+    if (!input) continue;
+    const want = meta.bool || meta.select ? String(parseInt(input.value, 10) || 0)
+      : String(Math.max(0, parseInt(input.value, 10) || 0));
+    if (want !== c.value) changed.push({ name, value: want });
+  }
+  return changed;
+}
+
+function markRulesDirty() {
+  const changed = rulesChanged();
+  $('rulesApply').disabled = !$('pw').value || !changed.length;
+  for (const cell of $('rulesGrid').children) {
+    cell.classList.toggle('dirty', changed.some((c) => c.name === cell.dataset.name));
+  }
+}
+
+$('rulesReload').addEventListener('click', () => { loadRules(); });
+$('rulesApply').addEventListener('click', async () => {
+  const changed = rulesChanged();
+  if (!changed.length) return;
+  $('rulesApply').disabled = true;
+  const done = [];
+  for (const c of changed) {
+    const output = await rcon(`set ${c.name} ${c.value}`);
+    if (output !== null) done.push(c.name);
+    else break;                          // failed command stops the batch
+  }
+  await loadRules(true);
+  rulesState(done.length === changed.length
+    ? `applied: ${done.join(', ')}`
+    : `applied ${done.length}/${changed.length} — ${done.concat(changed.slice(done.length).map((c) => c.name)).join(', ')}`);
+});
+$('rulesGrid').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !$('rulesApply').disabled) $('rulesApply').click();
+});
+loadRules();
 
 // --- bots (addbot/kick are game+engine commands; names = retail botfiles) ------
 

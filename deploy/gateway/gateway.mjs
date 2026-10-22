@@ -671,6 +671,29 @@ async function handleAdmin(request, response) {
       respond(response, 200, status);
       return true;
     }
+    // live values of the cvars the admin panel's rules editor shows. GET is
+    // read-only; changes go through /admin/api/rcon as `set <name> <value>`.
+    if (url.pathname === "/admin/api/settings" && request.method === "GET") {
+      const NAMES = ["fraglimit", "timelimit", "capturelimit", "g_gametype", "bot_minplayers",
+        "g_allowVote", "g_knockback", "g_speed", "g_gravity",
+        "g_weaponMode", "g_freeze"];
+      const outputs = await rconBatch(NAMES);
+      const cvars = [];
+      for (let i = 0; i < NAMES.length; i++) {
+        // `"name" is:"value^7" default:"x^7"[, latched to "pending"]` — the
+        // server echoes its own canonical spelling (g_friendlyFire), so any
+        // name matches:
+        const m = /"([^"]+)"\s+is:"((?:[^"\\]|\\.)*)"/.exec(outputs[i]);
+        const l = /latched:\s*"([^"]*)"/.exec(outputs[i]);
+        cvars.push({
+          name: m ? m[1] : NAMES[i],
+          value: m ? m[2].replace(/\^.?/g, "") : "",
+          latched: l ? l[1].replace(/\^.?/g, "") : "",
+        });
+      }
+      respond(response, 200, { cvars });
+      return true;
+    }
     if (url.pathname === "/admin/api/auth" && request.method === "POST") {
       const body = await readBody(request);
       if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;

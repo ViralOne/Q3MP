@@ -85,7 +85,7 @@ export const PRESETS = [
     description: "red vs blue · kills freeze, teammates thaw · first to 7 rounds",
     gametype: 3,
     maps: (all) => [...all.filter(CUSTOM_DM), ...all.filter(DM)],
-    cvars: { fraglimit: 7, timelimit: 20, capturelimit: 0, g_teamForceBalance: 1, g_weaponMode: 0, g_freeze: 1, g_knockback: 1000, dmflags: 0 },
+    cvars: { fraglimit: 7, timelimit: 20, capturelimit: 0, g_teamForceBalance: 1, g_teamAutoJoin: 1, g_weaponMode: 0, g_freeze: 1, g_knockback: 1000, dmflags: 0 },
   },
   // weapon arenas (fork qagame, g_weaponMode): free for all, nothing on the map
   {
