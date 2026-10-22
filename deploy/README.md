@@ -233,8 +233,10 @@ applies the same preset as the admin panel — settings and your saved map
 rotation — announced 3 s ahead.
 
 Each human gets a short private welcome on joining (at most every 30
-minutes) naming the current mode and `!modes`, and the launcher shows the
-mode being played. Turn chat voting off with the checkbox in the admin
+minutes) naming the current mode and `!modes`. The launcher shows the mode
+being played and a **Chat commands** card listing every mode with its
+`!mode` command and short names (click one to copy it), the current mode
+marked, plus the vote and map-vote keys — served by the gateway at `/modes`. Turn chat voting off with the checkbox in the admin
 *Game mode* card. The gateway reads the chat from the server's `games.log`
 and answers with `say` / `tell` over rcon. In the all-in-one image a mode
 switch is one `exec` of a generated `q3preset.cfg` (instant); the

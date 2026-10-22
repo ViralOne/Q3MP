@@ -12,6 +12,8 @@
     justify-content:center; gap:16px; background:#000; z-index:5; }
   .panel h1 { font-size:26px; font-weight:700; letter-spacing:2px; color:#d94a36; margin:0;
     text-transform:uppercase; }
+  /* the start page can outgrow short screens now: scroll instead of clipping */
+  #login { overflow-y:auto; justify-content:safe center; padding:24px 0; box-sizing:border-box; }
   #login .field { display:flex; gap:8px; }
   #login #serverField { width: min(360px, 82vw); }
   #login input { background:#141414; border:1px solid #444; color:#eee; font:inherit;
@@ -26,7 +28,9 @@
   #login button { background:#d94a36; border:0; color:#fff; font:inherit; padding:10px 22px;
     cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
   #login button:disabled { background:#552; color:#996; cursor:default; }
-  #login .hint { font-size:12px; color:#8a8a8a; }
+  #login .hint { font-size:12px; color:#8a8a8a; max-width:92vw; text-align:center; }
+  #login .field { max-width:92vw; }
+  #login input { min-width:0; }
   #login a { color:#a9a; }
   /* map gallery: this server's maps with their levelshots */
   #gallery { width:min(760px, 92vw); margin-top:6px; }
@@ -43,6 +47,26 @@
   .mapCard span { display:block; font-size:12px; color:#ccc; padding:5px 7px; white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; }
   .mapCard.now { border-color:#d94a36; }
+  /* chat commands help: modes players can vote, plus the other chat keys */
+  #help { width:min(760px, 92vw); background:#0b0b0b; border:1px solid #2a2a2a; border-radius:4px;
+    padding:12px 14px; box-sizing:border-box; }
+  #help[hidden] { display:none; }
+  #help h2 { font-size:12px; font-weight:700; color:#d94a36; letter-spacing:1px; text-transform:uppercase;
+    margin:0 0 4px; }
+  #help .lead { font-size:12px; color:#9a9a9a; margin:0 0 10px; }
+  #helpModes { display:grid; grid-template-columns:repeat(auto-fill, minmax(168px, 1fr)); gap:6px; margin-bottom:12px; }
+  /* #login button styles the PLAY button; mode chips are quieter */
+  #login .mode { background:#111; border:1px solid #333; border-radius:3px; padding:7px 9px; text-align:left;
+    font:inherit; color:#ccc; cursor:pointer; display:flex; flex-direction:column; gap:2px;
+    text-transform:none; letter-spacing:0; }
+  #login .mode:hover { border-color:#777; }
+  #login .mode.now { border-color:#d94a36; }
+  .mode b { font-size:13px; color:#eee; }
+  .mode.now b::after { content:'  \25CF now'; color:#d94a36; font-size:11px; font-weight:400; }
+  .mode code { font-size:12px; color:#e0b050; }
+  .mode small { font-size:11px; color:#8a8a8a; line-height:1.35; }
+  #helpCmds { display:grid; grid-template-columns:max-content 1fr; gap:5px 14px; font-size:12px; color:#aaa; }
+  #helpCmds code { color:#e0b050; white-space:nowrap; }
   .mapCard .nobots { font-size:10px; color:#d9a036; padding:0 7px 5px; }
   .mapCard.now span::before { content:'\25B6  '; color:#d94a36; }
   #bar { width:min(420px, 70vw); height:8px; background:#222; border:1px solid #333; display:none; }
@@ -87,6 +111,18 @@
   <div id="gallery" hidden>
     <div class="hint" id="galleryTitle">maps on this server</div>
     <div id="galleryStrip"></div>
+  </div>
+  <div id="help" hidden>
+    <h2>Chat commands</h2>
+    <p class="lead" id="helpLead">press <b>T</b> in game to chat · click a mode to copy its command</p>
+    <div id="helpModes"></div>
+    <div id="helpCmds">
+      <span><code>!modes</code></span><span>list the modes in game</span>
+      <span><code>!mode &lt;name&gt;</code></span><span>start a 20 s vote for a mode — you count as yes; alone it switches at once</span>
+      <span><code>!yes</code> · <code>!no</code></span><span>answer a running mode vote</span>
+      <span><code>1</code> · <code>2</code> · <code>3</code></span><span>vote the next map when a match ends</span>
+      <span><code>~</code> · <code>F1</code> · <code>ESC</code></span><span>game console · browser log · game menu</span>
+    </div>
   </div>
 </div>
 <div class="panel" id="bootNew" style="display:none">
@@ -245,10 +281,10 @@ document.addEventListener('pointerlockchange', () => {
 
 const realError = console.error;
 console.error = (...a) => { realError(...a); logLine(a.map(String).join(' ')); };
-logBox.classList.add('show');
+// (the start page's Chat commands card has the how-to; this log opens on
+// F1 / the logs button, or by itself on errors)
 logLine('[keys] ESC = game menu (quit/team) · ~ = game console · F1 = this log · fullscreen button bottom-right');
-logLine('[vote] ~ console: callvote map q3dm17 · callvote nextmap · callvote g_gametype 3 … — others answer: /vote yes or /vote no');
-logLine('[chat] y = say (chat) · tools sit bottom-right when the cursor is free');
+logLine('[vote] T = chat: !modes · !mode insta · !yes / !no · 1 2 3 = next map at match end');
 
 function say(msg) { statusEl.textContent = msg; logLine(msg); }
 function fail(msg) {
@@ -744,7 +780,54 @@ function mapCard(m, isNow) {
 
 function showGallery() {
   galleryBox.hidden = !galleryReady || directServer || Boolean(serverSelect.value);
+  // the commands are this server's too
+  helpBox.hidden = !helpReady || directServer || Boolean(serverSelect.value);
 }
+
+// ------------------------------------------------------------- chat commands
+// The modes players can vote in chat (gateway /modes), current one marked.
+const helpBox = document.getElementById('help');
+let helpReady = false;
+
+async function loadHelp() {
+  try {
+    const r = await fetch('/modes', { cache: 'no-store' });
+    if (!r.ok) return;
+    const { modes, current, chatVote } = await r.json();
+    if (!Array.isArray(modes) || !modes.length) return;
+    document.getElementById('helpModes').replaceChildren(...modes.map((m) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = m.id === current ? 'mode now' : 'mode';
+      b.title = `${m.description} — click to copy "${m.command}"`;
+      const name = document.createElement('b');
+      name.textContent = m.name;
+      const cmd = document.createElement('code');
+      cmd.textContent = m.command;
+      const more = document.createElement('small');
+      more.textContent = m.aliases.length ? `also: ${m.aliases.slice(0, 3).join(', ')}` : m.description;
+      b.append(name, cmd, more);
+      b.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(m.command);
+          cmd.textContent = 'copied — paste in chat';
+        } catch {
+          cmd.textContent = m.command;
+        }
+        setTimeout(() => { cmd.textContent = m.command; }, 1500);
+      });
+      return b;
+    }));
+    document.getElementById('helpLead').innerHTML = chatVote
+      ? 'press <b>T</b> in game to chat · click a mode to copy its command'
+      : 'mode voting is turned off on this server (the admin picks the mode) · press <b>T</b> to chat';
+    helpReady = true;
+    showGallery();
+  } catch (e) {
+    console.error('chat commands:', e && e.message || e);
+  }
+}
+loadHelp();
 
 async function loadGallery() {
   try {

@@ -21,7 +21,7 @@
 	}
 
 	# launcher download list (/paks) and map gallery (/maps, /levelshot/<map>)
-	@gallery path /paks /maps /levelshot/* /stats
+	@gallery path /paks /maps /modes /levelshot/* /stats
 	handle @gallery {
 		reverse_proxy gateway:8080
 	}

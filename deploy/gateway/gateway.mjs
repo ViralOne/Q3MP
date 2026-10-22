@@ -36,7 +36,7 @@ import { WebSocketServer } from "ws";
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
 import { startStats, statsSnapshot, onLogLine } from "./stats.mjs";
 import { startChatVote } from "./chatvote.mjs";
-import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax, presetOfInfo } from "./presets.mjs";
+import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax, presetOfInfo, presetAliases } from "./presets.mjs";
 import { hasBspc, queueAas, aasJobs, aasPakName } from "./aas.mjs";
 
 const env = (name, fallback) => process.env[name] || fallback;
@@ -528,6 +528,26 @@ async function handleAdmin(request, response) {
   // Public leaderboard / stats, rebuilt from the server's games.log
   if (url.pathname === "/stats" && request.method === "GET") {
     respond(response, 200, statsSnapshot());
+    return true;
+  }
+  // Public list of the game modes players can vote in chat (start page help)
+  if (url.pathname === "/modes" && request.method === "GET") {
+    const status = await serverStatus().catch(() => null);
+    const current = status ? presetOfInfo(status.info || {}) : null;
+    respond(response, 200, {
+      chatVote: chatVote ? chatVote.status().enabled : false,
+      current: current ? current.id : null,
+      modes: PRESETS.map((p) => {
+        const word = p.id === "instagib" ? "insta" : p.id;
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          command: `!mode ${word}`,
+          aliases: [p.id, ...presetAliases(p.id)].filter((a) => a !== word),
+        };
+      }),
+    });
     return true;
   }
   // Public map gallery: every map in the server paks (with or without a
