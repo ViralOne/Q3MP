@@ -185,6 +185,19 @@ applies on map load — the presets reload the map for you):
 In both, every weapon, ammo, armor, health and powerup pickup is removed from
 the map (CTF flags stay) and dead players drop nothing. Bots play both modes.
 
+## Unlagged (hitscan lag compensation)
+
+Browser players reach the server through WebSockets (and often Cloudflare),
+which adds latency. With `g_unlagged 1` (default) the server records every
+player's position each frame and, when someone fires an instant-hit weapon
+(gauntlet, machinegun, shotgun, lightning gun, railgun), traces the shot
+against where the other players were on the shooter's screen — so you hit
+what you aim at instead of leading targets by your ping. Rewinds are capped
+at `g_unlaggedMax` (default 400 ms); rockets, grenades, plasma and BFG are
+projectiles and are not rewound. `g_unlaggedDebug 1` prints every rewind to
+the server log. Our own implementation in the fork's `qagame`
+(`g_weapon.c`), in the spirit of Neil Toronto's Unlagged mod.
+
 ## End-of-match map vote
 
 When a match ends, a ballot with three maps appears over the scoreboard and

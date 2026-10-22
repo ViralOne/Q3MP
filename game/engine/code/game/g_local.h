@@ -252,6 +252,13 @@ typedef struct {
 
 // this structure is cleared on each ClientSpawn(),
 // except for 'client->pers' and 'client->sess'
+// unlagged: one recorded server frame of a player's position
+#define UNLAG_HISTORY	20		// 20 frames = 1 s at sv_fps 20
+typedef struct {
+	vec3_t		origin, mins, maxs;
+	int			leveltime;
+} clientHistory_t;
+
 struct gclient_s {
 	// ps MUST be the first element, because the server expects it
 	playerState_t	ps;				// communicated by server to clients
@@ -318,6 +325,12 @@ struct gclient_s {
 #endif
 
 	char		*areabits;
+
+	// unlagged (g_unlagged): recent positions, and the real one while rewound
+	clientHistory_t	history[UNLAG_HISTORY];
+	int			historyHead;
+	qboolean	unlagShifted;
+	vec3_t		unlagOrigin, unlagMins, unlagMaxs;
 };
 
 
@@ -614,6 +627,9 @@ void DeathmatchScoreboardMessage( gentity_t *ent );
 void MoveClientToIntermission( gentity_t *ent );
 void FindIntermissionPoint( void );
 void MapVote_Start( void );
+void G_StoreClientHistory( gentity_t *ent );
+void G_TimeShiftClients( gentity_t *shooter );
+void G_UnTimeShiftClients( gentity_t *shooter );
 qboolean MapVote_Think( void );
 qboolean MapVote_Cast( gentity_t *ent, const char *text );
 void SetLeader(int team, int client);
@@ -737,6 +753,9 @@ extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCK
 // topped up every second so it never runs out
 #define WEAPONMODE_AMMO		999
 
+extern	vmCvar_t	g_unlagged;			// hitscan lag compensation on/off
+extern	vmCvar_t	g_unlaggedMax;		// most milliseconds a shot is rewound
+extern	vmCvar_t	g_unlaggedDebug;	// print every rewind
 extern	vmCvar_t	g_mapvote;			// end-of-match map vote on/off
 extern	vmCvar_t	g_mapvoteTime;		// seconds the ballot stays open
 extern	vmCvar_t	g_mapvoteMaps;		// space-separated candidate pool ("" = maps on disk)

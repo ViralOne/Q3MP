@@ -47,6 +47,9 @@ vmCvar_t	g_friendlyFire;
 
 vmCvar_t	g_scoreKeep;
 vmCvar_t	g_weaponMode;
+vmCvar_t	g_unlagged;
+vmCvar_t	g_unlaggedMax;
+vmCvar_t	g_unlaggedDebug;
 vmCvar_t	g_mapvote;
 vmCvar_t	g_mapvoteTime;
 vmCvar_t	g_mapvoteMaps;
@@ -132,6 +135,10 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_scoreKeep, "g_scoreKeep", "1", CVAR_ARCHIVE, 0, qtrue  },
 	// weapon arenas; latched so the item layout and loadout change together on map load
 	{ &g_weaponMode, "g_weaponMode", "0", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse  },
+	// hitscan lag compensation (unlagged)
+	{ &g_unlagged, "g_unlagged", "1", CVAR_SERVERINFO | CVAR_ARCHIVE, 0, qtrue  },
+	{ &g_unlaggedMax, "g_unlaggedMax", "400", CVAR_ARCHIVE, 0, qfalse  },
+	{ &g_unlaggedDebug, "g_unlaggedDebug", "0", 0, 0, qfalse  },
 	// end-of-match map vote
 	{ &g_mapvote, "g_mapvote", "1", CVAR_ARCHIVE, 0, qtrue  },
 	{ &g_mapvoteTime, "g_mapvoteTime", "15", CVAR_ARCHIVE, 0, qtrue  },
@@ -2171,6 +2178,14 @@ void G_RunFrame( int levelTime ) {
 	for (i=0 ; i < level.maxclients ; i++, ent++ ) {
 		if ( ent->inuse ) {
 			ClientEndFrame( ent );
+		}
+	}
+
+	// unlagged: remember where everyone is this frame
+	ent = &g_entities[0];
+	for (i=0 ; i < level.maxclients ; i++, ent++ ) {
+		if ( ent->inuse && ent->client && ent->client->pers.connected == CON_CONNECTED ) {
+			G_StoreClientHistory( ent );
 		}
 	}
 

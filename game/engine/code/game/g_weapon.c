@@ -837,6 +837,12 @@ void FireWeapon( gentity_t *ent ) {
 
 	CalcMuzzlePointOrigin ( ent, ent->client->oldOrigin, forward, right, up, muzzle );
 
+	// instant-hit weapons trace against where the shooter saw the others
+	if ( ent->s.weapon == WP_GAUNTLET || ent->s.weapon == WP_MACHINEGUN || ent->s.weapon == WP_SHOTGUN
+		|| ent->s.weapon == WP_LIGHTNING || ent->s.weapon == WP_RAILGUN ) {
+		G_TimeShiftClients( ent );
+	}
+
 	// fire the specific weapon
 	switch( ent->s.weapon ) {
 	case WP_GAUNTLET:
@@ -887,6 +893,142 @@ void FireWeapon( gentity_t *ent ) {
 	default:
 // FIXME		G_Error( "Bad ent->s.weapon" );
 		break;
+	}
+
+	G_UnTimeShiftClients( ent );
+}
+
+
+/*
+=============================================================================
+
+UNLAGGED (hitscan lag compensation, g_unlagged)
+
+Every server frame each player's position is recorded. When a player fires
+an instant-hit weapon (gauntlet, machinegun, shotgun, lightning, railgun),
+everyone else is moved back for the duration of the trace to where they were
+at the time the shooter's screen showed them (the usercmd's serverTime,
+which is the time cgame renders the other players at), so aiming at what you
+see is what hits. Capped at g_unlaggedMax milliseconds. Projectiles are not
+rewound.
+
+=============================================================================
+*/
+
+// (ClientSpawn clears the whole client, so a respawn starts a fresh history)
+void G_StoreClientHistory( gentity_t *ent ) {
+	gclient_t		*cl = ent->client;
+	clientHistory_t	*h;
+
+	if ( !cl ) {
+		return;
+	}
+	h = &cl->history[cl->historyHead];
+	VectorCopy( ent->r.currentOrigin, h->origin );
+	VectorCopy( ent->r.mins, h->mins );
+	VectorCopy( ent->r.maxs, h->maxs );
+	h->leveltime = level.time;
+	cl->historyHead = ( cl->historyHead + 1 ) % UNLAG_HISTORY;
+}
+
+// Where a client was at `time`, interpolated between the two recorded frames
+// around it. qfalse when there is nothing to rewind (no older frame, or the
+// time is not before the newest one).
+static qboolean G_ClientPositionAt( gclient_t *cl, int time, vec3_t origin, vec3_t mins, vec3_t maxs ) {
+	clientHistory_t	*older = NULL, *newer = NULL, *h;
+	float			frac;
+	int				i;
+
+	for ( i = 1; i <= UNLAG_HISTORY; i++ ) {			// newest first
+		h = &cl->history[( cl->historyHead - i + UNLAG_HISTORY ) % UNLAG_HISTORY];
+		if ( !h->leveltime ) {
+			break;
+		}
+		if ( h->leveltime <= time ) {
+			older = h;
+			break;
+		}
+		newer = h;
+	}
+	if ( !older || !newer ) {
+		return qfalse;
+	}
+
+	frac = (float)( time - older->leveltime ) / (float)( newer->leveltime - older->leveltime );
+	// a teleport between the two frames: take the nearer one, never a lerp
+	if ( Distance( older->origin, newer->origin ) > 300 ) {
+		frac = frac < 0.5f ? 0 : 1;
+	}
+	for ( i = 0; i < 3; i++ ) {
+		origin[i] = older->origin[i] + frac * ( newer->origin[i] - older->origin[i] );
+	}
+	h = frac < 0.5f ? older : newer;
+	VectorCopy( h->mins, mins );
+	VectorCopy( h->maxs, maxs );
+	return qtrue;
+}
+
+void G_TimeShiftClients( gentity_t *shooter ) {
+	gentity_t	*ent;
+	gclient_t	*cl;
+	vec3_t		origin, mins, maxs;
+	int			time, i, shifted = 0;
+
+	if ( !g_unlagged.integer || !shooter->client || ( shooter->r.svFlags & SVF_BOT ) ) {
+		return;
+	}
+	time = shooter->client->pers.cmd.serverTime;
+	if ( time >= level.time ) {
+		return;
+	}
+	if ( level.time - time > g_unlaggedMax.integer ) {
+		time = level.time - g_unlaggedMax.integer;
+	}
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		cl = ent->client;
+		if ( ent == shooter || !ent->inuse || !cl || cl->pers.connected != CON_CONNECTED
+			|| cl->sess.sessionTeam == TEAM_SPECTATOR || ent->health <= 0 ) {
+			continue;
+		}
+		if ( !G_ClientPositionAt( cl, time, origin, mins, maxs ) ) {
+			continue;
+		}
+		VectorCopy( ent->r.currentOrigin, cl->unlagOrigin );
+		VectorCopy( ent->r.mins, cl->unlagMins );
+		VectorCopy( ent->r.maxs, cl->unlagMaxs );
+		cl->unlagShifted = qtrue;
+		VectorCopy( origin, ent->r.currentOrigin );
+		VectorCopy( mins, ent->r.mins );
+		VectorCopy( maxs, ent->r.maxs );
+		trap_LinkEntity( ent );
+		shifted++;
+	}
+	if ( g_unlaggedDebug.integer && shifted ) {
+		G_Printf( "unlagged: %s fired %i ms back, %i players rewound\n",
+			shooter->client->pers.netname, level.time - time, shifted );
+	}
+}
+
+void G_UnTimeShiftClients( gentity_t *shooter ) {
+	gentity_t	*ent;
+	gclient_t	*cl;
+	int			i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		ent = &g_entities[i];
+		cl = ent->client;
+		if ( !cl || !cl->unlagShifted ) {
+			continue;
+		}
+		cl->unlagShifted = qfalse;
+		VectorCopy( cl->unlagOrigin, ent->r.currentOrigin );
+		VectorCopy( cl->unlagMins, ent->r.mins );
+		VectorCopy( cl->unlagMaxs, ent->r.maxs );
+		if ( ent->inuse ) {
+			trap_LinkEntity( ent );
+		}
 	}
 }
 
