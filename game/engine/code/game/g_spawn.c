@@ -583,6 +583,10 @@ void SP_worldspawn( void ) {
 	trap_SetConfigstring( CS_MOTD, g_motd.string );		// message of the day
 
 	G_SpawnString( "gravity", "800", &s );
+	// g_gravityOverride (modes, mutators) wins over the map's own value
+	if ( g_gravityOverride.integer > 0 ) {
+		s = va( "%i", g_gravityOverride.integer );
+	}
 	trap_Cvar_Set( "g_gravity", s );
 
 	G_SpawnString( "enableDust", "0", &s );

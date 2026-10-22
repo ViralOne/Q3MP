@@ -25,6 +25,10 @@ const ROTATION_MAX = 16;
 // q3dm2 before q3dm10
 const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
 
+// Settings every preset writes unless it says otherwise, so switching away
+// from a mode never leaves its physics behind.
+const BASE_CVARS = { g_gravityOverride: 0, g_selfDamage: 1 };
+
 export const PRESETS = [
   {
     id: "ffa",
@@ -85,14 +89,18 @@ export const PRESETS = [
     cvars: { fraglimit: 30, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 2, g_freeze: 0, g_knockback: 1000, dmflags: 0 },
   },
   // e+-style chaos (fork qagame g_weaponMode 3): every weapon, haste, double
-  // knockback, no falling damage (dmflags 8 = DF_NO_FALLING)
+  // knockback, no falling damage (dmflags 8 = DF_NO_FALLING), low gravity and
+  // free rocket jumps
   {
     id: "excessive",
     name: "Excessive",
-    description: "e+-style · every weapon · endless ammo · haste · fast rockets · double knockback · 50 frags / 10 min",
+    description: "e+-style · every weapon · endless ammo · haste · fast rockets · double knockback · low gravity · free rocket jumps · 50 frags / 10 min",
     gametype: 0,
     maps: (all) => [...all.filter(CUSTOM_DM), ...all.filter(DM)],
-    cvars: { fraglimit: 50, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 3, g_freeze: 0, g_knockback: 2000, dmflags: 8 },
+    // gravity 600 (maps reset g_gravity, so via g_gravityOverride): jumps
+    // ~33% higher; g_selfDamage 0: your own splash pushes but does no damage
+    cvars: { fraglimit: 50, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 3, g_freeze: 0, g_knockback: 2000, dmflags: 8,
+      g_gravityOverride: 600, g_selfDamage: 0 },
   },
 ];
 
@@ -194,10 +202,18 @@ export function presetCommands(preset, availableMaps) {
   const { maps } = presetMaps(preset, availableMaps);
   if (!maps.length) throw new Error(`no maps for ${preset.name} in the server paks`);
   // the server rate-limits rcon (burst 10, then 1/s), so the gametype and
-  // limits go out as one vstr instead of one command each
+  // limits go out as a few vstrs instead of one command each; a cvar holds
+  // at most 255 characters, hence the chunks
   const settings = [`g_gametype ${preset.gametype}`,
-    ...Object.entries(preset.cvars).map(([cvar, value]) => `set ${cvar} ${value}`)];
-  const commands = [`set q3preset "${settings.join(" ; ")}"`, "vstr q3preset"];
+    ...Object.entries(presetCvars(preset)).map(([cvar, value]) => `set ${cvar} ${value}`)];
+  const commands = [];
+  const chunks = [];
+  for (const setting of settings) {
+    const last = chunks[chunks.length - 1];
+    if (last && (last + " ; " + setting).length <= 240) chunks[chunks.length - 1] = last + " ; " + setting;
+    else chunks.push(setting);
+  }
+  chunks.forEach((chunk, i) => commands.push(`set q3preset${i + 1} "${chunk}"`, `vstr q3preset${i + 1}`));
   // the end-of-match map vote offers maps from this rotation (cvar max ~250)
   let pool = "";
   for (const map of maps) {
@@ -211,6 +227,11 @@ export function presetCommands(preset, availableMaps) {
   });
   commands.push("vstr d1");
   return { commands, maps };
+}
+
+// A preset's settings, with the shared defaults filled in.
+export function presetCvars(preset) {
+  return { ...BASE_CVARS, ...preset.cvars };
 }
 
 export function presetList(availableMaps) {

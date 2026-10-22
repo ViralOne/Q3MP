@@ -186,13 +186,18 @@ applies on map load — the presets reload the map for you):
 | --- | --- | --- |
 | **Instagib** | 1 | railgun only, endless ammo, any railgun hit kills |
 | **Rocket arena** | 2 | rocket launcher + gauntlet, endless rockets, spawn with 100 armor |
-| **Excessive** | 3 | inspired by Excessive Plus (e+): every weapon incl. BFG with endless ammo, permanent haste, rockets 1.5× faster; the preset adds double knockback (`g_knockback 2000`) and no falling damage (`dmflags 8`) |
+| **Excessive** | 3 | inspired by Excessive Plus (e+): every weapon incl. BFG with endless ammo, permanent haste, rockets 1.5× faster; the preset adds double knockback (`g_knockback 2000`), no falling damage (`dmflags 8`), low gravity (`g_gravityOverride 600`, jumps ~33% higher) and free rocket jumps (`g_selfDamage 0`: your own splash pushes you but does no damage) |
 
 In Instagib and Rocket arena every weapon, ammo, armor, health and powerup
 pickup is removed from the map (CTF flags stay); Excessive removes only
 weapons and ammo. Dead players drop nothing. Bots play all three. Excessive is
 our own take on the e+ style — Excessive Plus itself is closed source and not
 included.
+
+Maps set `g_gravity` themselves on load, so modes change gravity through
+`g_gravityOverride` (0 = the map's own value); `g_selfDamage 0` works in any
+mode (`g_debugDamage 1` logs each blocked hit as `SelfDamage:`). Every preset
+resets both, so leaving Excessive restores normal physics.
 
 **Spawn protection** (all weapon arenas): for `g_spawnProtect` milliseconds
 after spawning (default 2000, `0` = off) other players can neither hurt nor

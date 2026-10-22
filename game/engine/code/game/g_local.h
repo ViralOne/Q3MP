@@ -766,6 +766,8 @@ extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCK
 #define WEAPONMODE_AMMO		999
 
 extern	vmCvar_t	g_spawnProtect;		// ms of spawn protection in the weapon arenas (0 = off)
+extern	vmCvar_t	g_selfDamage;		// 0: your own weapons push you but never hurt you
+extern	vmCvar_t	g_gravityOverride;	// >0: g_gravity on every map load, instead of the map's
 
 extern	vmCvar_t	g_freeze;			// freeze tag in team deathmatch (latched)
 extern	vmCvar_t	g_thawTime;			// seconds a teammate needs to thaw someone

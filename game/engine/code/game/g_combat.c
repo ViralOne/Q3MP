@@ -1021,6 +1021,14 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	// always give half damage if hurting self
 	// calculated after knockback, so rocket jumping works
 	if ( targ == attacker) {
+		// g_selfDamage 0: the knockback above is all you get (not /kill)
+		if ( !g_selfDamage.integer && !( dflags & DAMAGE_NO_PROTECTION ) ) {
+			if ( g_debugDamage.integer ) {
+				G_LogPrintf( "SelfDamage: %i %i: %s blocked %i\n", (int)( targ - g_entities ), mod,
+					client ? client->pers.netname : "", damage );
+			}
+			return;
+		}
 		damage *= 0.5;
 	}
 
