@@ -1,6 +1,10 @@
 # Set DOMAIN at runtime: `DOMAIN=quake.example.com docker compose up -d`
 # Local testing default falls back to :80 (no TLS).
 {$DOMAIN:localhost} {
+	# compress text, json, js and wasm (zstd, else gzip); pk3s are zips and
+	# images are already compressed, so Caddy's default matcher skips them
+	encode zstd gzip
+
 	# HTML pages must always revalidate, or browsers keep stale copies
 	# after server-side updates (scripts out of sync with fetched assets).
 	@pages path / /index.html /admin.html
