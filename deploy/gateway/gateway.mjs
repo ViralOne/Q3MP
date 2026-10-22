@@ -460,9 +460,12 @@ const httpServer = createServer(async (request, response) => {
 
 async function handleAdmin(request, response) {
   const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
+  // healthy = this gateway runs and the game server answers a status query
   if (url.pathname === "/healthz" && request.method === "GET") {
-    respond(response, 200, {
-      status: "ok",
+    const status = await serverStatus().catch(() => null);
+    respond(response, status ? 200 : 503, {
+      status: status ? "ok" : "game server not answering",
+      game: Boolean(status),
       clients: socketServer.clients.size,
       target: `${options.targetHost}:${options.targetPort}`,
       admin: Boolean(options.rconPassword),

@@ -236,6 +236,21 @@ To enable it:
 After replacing a pak under the same name, purge it (*Caching → Configuration
 → Purge by URL*) or wait a day.
 
+## Health checks
+
+The gateway's `/healthz` returns 200 only while the game server answers a
+status query too. Docker shows the result (`docker compose ps` → *healthy* /
+*unhealthy*; UGOS and other NAS UIs show it as well):
+
+- **All-in-one image:** a `HEALTHCHECK` checks gateway + game server + Caddy.
+  Docker only *marks* an unhealthy container, so `start.sh` also runs a
+  watchdog: after a 90 s start-up grace, 4 failed checks in a row (30 s apart,
+  `WATCHDOG_GRACE` / `WATCHDOG_FAILS`) stop the container — hung processes
+  are force-killed after 10 s — and `restart: unless-stopped` starts it fresh.
+- **Three-container stack:** `q3ded` answers `getstatus` on UDP, `gateway`
+  serves `/healthz`, `web` (Caddy) answers its admin API. These only report;
+  add an autoheal container if you want automatic restarts there.
+
 ## Player-facing URLs
 
 | URL | Description |

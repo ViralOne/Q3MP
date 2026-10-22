@@ -85,7 +85,7 @@ RUN sed -i 's/gateway:8080/127.0.0.1:8080/g' /etc/caddy/Caddyfile \
   && ! grep -q 'gateway:8080' /etc/caddy/Caddyfile
 COPY deploy/public /srv/web
 
-COPY deploy/allinone/start.sh /usr/local/bin/start.sh
+COPY deploy/allinone/start.sh deploy/allinone/healthcheck.mjs /usr/local/bin/
 RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/q3ded-entrypoint.sh \
   # one data volume: the server stages paks from /data, publishes zz-cgame.pk3
   # to /out, and Caddy serves /srv/data as /assets — all the same directory
@@ -107,4 +107,8 @@ ENV FS_BASEPATH=/game \
 VOLUME ["/data", "/state", "/caddy"]
 
 EXPOSE 80/tcp 443/tcp 27960/udp
+# Caddy + gateway + game server (see allinone/healthcheck.mjs); the start.sh
+# watchdog restarts the container when this keeps failing
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD ["node", "/usr/local/bin/healthcheck.mjs"]
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/start.sh"]

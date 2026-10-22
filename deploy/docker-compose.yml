@@ -18,6 +18,13 @@ services:
       # Remote console password, used by the admin panel. Required: set
       # RCON_PASSWORD=... in the environment or deploy/.env (no default).
       RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD (admin panel / rcon password)}"
+    healthcheck:
+      # answers an out-of-band getstatus on its UDP port (bash /dev/udp)
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/udp/127.0.0.1/27960 && printf '\\377\\377\\377\\377getstatus\\n' >&3 && timeout 3 head -c 18 <&3 | grep -q statusResponse"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     ports:
       # Optional: expose UDP so native ioquake3 players can join too.
       # The WASM clients come in through the gateway over wss.
@@ -51,6 +58,13 @@ services:
       # the server's games.log, for the /stats leaderboard
       - server-state:/state:ro
       - gateway-state:/gateway-state
+    healthcheck:
+      # 200 only while the game server answers too
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     depends_on:
       - q3ded
     restart: unless-stopped
@@ -68,6 +82,12 @@ services:
       - ./quake3-data:/srv/data:ro
       - caddy_data:/data
       - caddy_config:/config
+    healthcheck:
+      # Caddy's admin API (loopback only inside the container)
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     ports:
       - "80:80"
       - "443:443"
