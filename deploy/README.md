@@ -168,7 +168,7 @@ navigation, so bots stand still there.
 
 The admin panel's *Game mode* card switches the whole server with one click:
 **Free for all**, **Team deathmatch**, **Capture the flag**, **Duel**,
-**Freeze tag**, **Instagib**, **Rocket arena** or **Excessive**. Each
+**Freeze tag**, **Instagib**, **Rocket arena**, **Excessive** or **Gun game**. Each
 sets the gametype and its limits, builds a map rotation (`d1`…`dN` vstr chain,
 up to 16 maps) from the maps in the server paks, and loads the first map.
 **edit maps** picks a mode's rotation yourself — tick maps in play order,
@@ -187,12 +187,24 @@ applies on map load — the presets reload the map for you):
 | **Instagib** | 1 | railgun only, endless ammo, any railgun hit kills |
 | **Rocket arena** | 2 | rocket launcher + gauntlet, endless rockets, spawn with 100 armor |
 | **Excessive** | 3 | inspired by Excessive Plus (e+): every weapon incl. BFG with endless ammo, permanent haste, rockets 1.5× faster; the preset adds double knockback (`g_knockback 2000`), no falling damage (`dmflags 8`), low gravity (`g_gravityOverride 600`, jumps ~33% higher) and free rocket jumps (`g_selfDamage 0`: your own splash pushes you but does no damage) |
+| **Gun game** | 4 | one weapon at a time, each kill moves you to the next; win with a gauntlet kill on the last level |
 
 In Instagib and Rocket arena every weapon, ammo, armor, health and powerup
 pickup is removed from the map (CTF flags stay); Excessive removes only
 weapons and ammo. Dead players drop nothing. Bots play all three. Excessive is
 our own take on the e+ style — Excessive Plus itself is closed source and not
 included.
+
+**Gun game** (`g_weaponMode 4`, free for all): everyone starts on the
+machinegun and every kill moves you to the next weapon — machinegun, shotgun,
+lightning gun, plasma gun, grenade launcher, rocket launcher, railgun, BFG and
+finally the gauntlet; a gauntlet kill on that last level wins. Your score is
+your level (the preset's fraglimit is the 9 levels). A gauntlet kill knocks
+the victim down a level, and so does a suicide or a death to the world.
+Weapons and ammo are removed from the map (health, armor and powerups stay),
+ammo never runs out, and the game client switches to each new weapon by
+itself. Bots always fight in this mode instead of retreating with a weak gun.
+Chat: `!mode gungame` (or `gg`).
 
 Maps set `g_gravity` themselves on load, so modes change gravity through
 `g_gravityOverride` (0 = the map's own value); `g_selfDamage 0` works in any

@@ -1405,6 +1405,15 @@ void ClientSpawn(gentity_t *ent) {
 			client->ps.ammo[i] = WEAPONMODE_AMMO;
 		}
 		client->ps.powerups[PW_HASTE] = level.time + 0x7fffff;
+	} else if ( g_weaponMode.integer == WEAPONMODE_GUNGAME ) {
+		// the weapon of your level (the score), plus the gauntlet
+		int w = G_GunGameWeapon( client->ps.persistant[PERS_SCORE] );
+
+		client->ps.stats[STAT_WEAPONS] = ( 1 << WP_GAUNTLET ) | ( 1 << w );
+		client->ps.ammo[WP_MACHINEGUN] = 0;
+		if ( w != WP_GAUNTLET ) {
+			client->ps.ammo[w] = WEAPONMODE_AMMO;
+		}
 	}
 
 	// mutators: the grappling hook for everyone, permanent quad

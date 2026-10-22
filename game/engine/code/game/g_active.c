@@ -423,6 +423,12 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 			for ( w = WP_MACHINEGUN; w <= WP_BFG; w++ ) {
 				client->ps.ammo[w] = WEAPONMODE_AMMO;
 			}
+		} else if ( g_weaponMode.integer == WEAPONMODE_GUNGAME ) {
+			int w = G_GunGameWeapon( client->ps.persistant[PERS_SCORE] );
+
+			if ( w != WP_GAUNTLET ) {
+				client->ps.ammo[w] = WEAPONMODE_AMMO;
+			}
 		}
 
 		// regenerate

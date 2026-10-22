@@ -522,6 +522,16 @@ void CG_TransitionPlayerState( playerState_t *ps, playerState_t *ops ) {
 		CG_CheckLocalSounds( ps, ops );
 	}
 
+	// the server swapped our weapons (gun game levels, mutators): pick up
+	// what it gave us, and never keep selecting a weapon we no longer have
+	if ( ps->stats[STAT_WEAPONS] != ops->stats[STAT_WEAPONS]
+		&& !( ops->stats[STAT_WEAPONS] & ( 1 << ps->weapon ) ) ) {
+		cg.weaponSelect = ps->weapon;
+	}
+	if ( !( ps->stats[STAT_WEAPONS] & ( 1 << cg.weaponSelect ) ) ) {
+		cg.weaponSelect = ps->weapon;
+	}
+
 	// check for going low on ammo
 	CG_CheckAmmo();
 

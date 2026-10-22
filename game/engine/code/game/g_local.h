@@ -761,6 +761,10 @@ extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCK
 #define WEAPONMODE_INSTAGIB	1	// railgun only, endless ammo, one hit kills
 #define WEAPONMODE_ROCKETS	2	// rocket launcher + gauntlet, endless rockets, 100 armor
 #define WEAPONMODE_EXCESSIVE	3	// e+-style: every weapon, endless ammo, permanent haste, fast rockets
+#define WEAPONMODE_GUNGAME	4	// gun game: each kill moves you to the next weapon
+#define GUNGAME_LEVELS		9	// machinegun ... BFG, then the gauntlet; the score is the level
+int G_GunGameWeapon( int level );
+void G_GunGameKill( gentity_t *self, gentity_t *attacker, int meansOfDeath );
 // arena ammo: a real count (bots treat -1 as "no ammo" and never fire),
 // topped up every second so it never runs out
 #define WEAPONMODE_AMMO		999

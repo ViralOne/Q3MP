@@ -877,8 +877,8 @@ int G_ItemDisabled( gitem_t *item ) {
 	char name[128];
 
 	// weapon arenas keep only team objectives (CTF flags) on the map;
-	// excessive keeps health, armor and powerups (everyone has every weapon)
-	if ( g_weaponMode.integer == WEAPONMODE_EXCESSIVE ) {
+	// excessive and gun game keep health, armor and powerups
+	if ( g_weaponMode.integer == WEAPONMODE_EXCESSIVE || g_weaponMode.integer == WEAPONMODE_GUNGAME ) {
 		if ( item->giType == IT_WEAPON || item->giType == IT_AMMO ) {
 			return qtrue;
 		}

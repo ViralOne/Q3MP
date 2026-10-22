@@ -80,6 +80,10 @@ void AddScore( gentity_t *ent, vec3_t origin, int score ) {
 	if ( level.warmupTime ) {
 		return;
 	}
+	// gun game: the score is the weapon level, set by G_GunGameKill
+	if ( g_weaponMode.integer == WEAPONMODE_GUNGAME ) {
+		return;
+	}
 	// show score plum
 	ScorePlum(ent, origin, score);
 	//
@@ -570,6 +574,10 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		}
 	} else {
 		AddScore( self, self->r.currentOrigin, -1 );
+	}
+
+	if ( g_weaponMode.integer == WEAPONMODE_GUNGAME ) {
+		G_GunGameKill( self, attacker, meansOfDeath );
 	}
 
 	// Add team bonuses
@@ -1526,4 +1534,96 @@ void G_MutatorsFrame( void ) {
 	}
 	grapple = g_grapple.integer;
 	quad = g_quadAll.integer;
+}
+
+/*
+==============================================================================
+
+GUN GAME (g_weaponMode 4, free for all)
+
+Everyone starts on the machinegun. A kill moves you to the next weapon in
+gunGameWeapons; the score is your level, so g_fraglimit GUNGAME_LEVELS ends
+the match when someone wins with a gauntlet kill on the last level. A
+gauntlet kill knocks the victim down a level (it only moves the killer up on
+the last level); a suicide or a death to the world costs a level too.
+
+==============================================================================
+*/
+
+static const int gunGameWeapons[GUNGAME_LEVELS] = {
+	WP_MACHINEGUN, WP_SHOTGUN, WP_LIGHTNING, WP_PLASMAGUN, WP_GRENADE_LAUNCHER,
+	WP_ROCKET_LAUNCHER, WP_RAILGUN, WP_BFG, WP_GAUNTLET
+};
+
+int G_GunGameWeapon( int level ) {
+	if ( level < 0 ) {
+		level = 0;
+	} else if ( level >= GUNGAME_LEVELS ) {
+		level = GUNGAME_LEVELS - 1;
+	}
+	return gunGameWeapons[level];
+}
+
+static void G_GunGameSetLevel( gentity_t *ent, int lvl ) {
+	gclient_t	*cl = ent->client;
+	int			w;
+	gitem_t		*item;
+
+	if ( lvl < 0 ) {
+		lvl = 0;
+	} else if ( lvl > GUNGAME_LEVELS ) {
+		lvl = GUNGAME_LEVELS;
+	}
+	if ( lvl == cl->ps.persistant[PERS_SCORE] ) {
+		return;
+	}
+	cl->ps.persistant[PERS_SCORE] = lvl;
+	CalculateRanks();
+	if ( lvl >= GUNGAME_LEVELS ) {
+		return;							// won: the fraglimit ends the match
+	}
+
+	// a living player swaps weapons now; a dead one gets it on respawn
+	w = G_GunGameWeapon( lvl );
+	if ( ent->health > 0 && cl->sess.sessionTeam != TEAM_SPECTATOR ) {
+		cl->ps.stats[STAT_WEAPONS] = ( 1 << WP_GAUNTLET ) | ( 1 << w )
+			| ( cl->ps.stats[STAT_WEAPONS] & ( 1 << WP_GRAPPLING_HOOK ) );
+		if ( w != WP_GAUNTLET ) {
+			cl->ps.ammo[w] = WEAPONMODE_AMMO;
+		}
+		cl->ps.weapon = w;
+		cl->ps.weaponstate = WEAPON_READY;
+		cl->ps.weaponTime = 0;
+	}
+	item = BG_FindItemForWeapon( w );
+	trap_SendServerCommand( ent - g_entities, va( "cp \"^3level %i/%i\n^7%s\"",
+		lvl + 1, GUNGAME_LEVELS, item ? item->pickup_name : "" ) );
+	if ( lvl == GUNGAME_LEVELS - 1 ) {
+		trap_SendServerCommand( -1, va( "print \"%s^7 is on the last level: ^1GAUNTLET^7!\n\"",
+			cl->pers.netname ) );
+	}
+}
+
+void G_GunGameKill( gentity_t *self, gentity_t *attacker, int meansOfDeath ) {
+	int	lvl;
+
+	if ( level.warmupTime || level.intermissionQueued || !self->client ) {
+		return;
+	}
+	// suicide, falling, lava: down a level
+	if ( !attacker || !attacker->client || attacker == self ) {
+		G_GunGameSetLevel( self, self->client->ps.persistant[PERS_SCORE] - 1 );
+		return;
+	}
+	if ( meansOfDeath == MOD_TELEFRAG ) {
+		return;
+	}
+	lvl = attacker->client->ps.persistant[PERS_SCORE];
+	if ( meansOfDeath == MOD_GAUNTLET ) {
+		G_GunGameSetLevel( self, self->client->ps.persistant[PERS_SCORE] - 1 );
+		if ( G_GunGameWeapon( lvl ) != WP_GAUNTLET ) {
+			return;
+		}
+	}
+	G_GunGameSetLevel( attacker, lvl + 1 );
 }

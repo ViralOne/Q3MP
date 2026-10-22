@@ -118,6 +118,16 @@ export const PRESETS = [
     cvars: { fraglimit: 50, timelimit: 10, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 3, g_freeze: 0, g_knockback: 2000, dmflags: 8,
       g_gravityOverride: 600, g_selfDamage: 0 },
   },
+  // gun game (fork qagame g_weaponMode 4): the score is the weapon level, so
+  // the fraglimit is the number of levels (machinegun ... BFG, gauntlet)
+  {
+    id: "gungame",
+    name: "Gun game",
+    description: "every kill moves you to the next weapon · win with a gauntlet kill · gauntlet kills set the victim back",
+    gametype: 0,
+    maps: (all) => [...all.filter(CUSTOM_DM), ...all.filter(DM)],
+    cvars: { fraglimit: 9, timelimit: 15, capturelimit: 0, g_teamForceBalance: 0, g_weaponMode: 4, g_freeze: 0, g_knockback: 1000, dmflags: 0 },
+  },
 ];
 
 // Chat aliases players can type after !mode (see chatvote.mjs); the id
@@ -131,6 +141,7 @@ const ALIASES = {
   instagib: ["insta", "ig", "rail"],
   rockets: ["ra", "rocket", "rocketarena"],
   excessive: ["e+", "xs", "eplus", "chaos"],
+  gungame: ["gg", "gun", "guns", "armsrace"],
 };
 
 export function presetByAlias(word) {
@@ -150,6 +161,7 @@ export function presetOfInfo(info) {
   if (weapon === 1) return PRESETS.find((p) => p.id === "instagib");
   if (weapon === 2) return PRESETS.find((p) => p.id === "rockets");
   if (weapon === 3) return PRESETS.find((p) => p.id === "excessive");
+  if (weapon === 4) return PRESETS.find((p) => p.id === "gungame");
   if (gt === 3 && Number(info.g_freeze ?? 0)) return PRESETS.find((p) => p.id === "freeze");
   return PRESETS.find((p) => p.gametype === gt && p.cvars.g_weaponMode === 0 && !p.cvars.g_freeze) || null;
 }

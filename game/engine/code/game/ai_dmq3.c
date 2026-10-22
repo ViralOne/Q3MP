@@ -2206,6 +2206,8 @@ BotAggression
 ==================
 */
 float BotAggression(bot_state_t *bs) {
+	//gun game: everyone has exactly one weapon (even just the gauntlet), so fight
+	if (g_weaponMode.integer == WEAPONMODE_GUNGAME) return 100;
 	//if the bot has quad
 	if (bs->inventory[INVENTORY_QUAD]) {
 		//if the bot is not holding the gauntlet or the enemy is really nearby
@@ -2254,6 +2256,10 @@ BotFeelingBad
 ==================
 */
 float BotFeelingBad(bot_state_t *bs) {
+	//gun game: the weapon you have is the one you need
+	if (g_weaponMode.integer == WEAPONMODE_GUNGAME) {
+		return 0;
+	}
 	if (bs->weaponnum == WP_GAUNTLET) {
 		return 100;
 	}
