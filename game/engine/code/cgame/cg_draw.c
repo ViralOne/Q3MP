@@ -2519,6 +2519,73 @@ void CG_DrawTimedMenus( void ) {
 CG_Draw2D
 =================
 */
+/*
+=================
+CG_DrawFreezeTag
+
+Freeze tag HUD from the server's STAT_THAW / STAT_THAWING / STAT_FT_* stats:
+the team counts, a thaw progress bar, and the round banner.
+=================
+*/
+#define FT_CHAR_W	24
+#define FT_CHAR_H	32
+
+static void CG_FtCentered( int y, const char *s, int cw, int ch, float alpha ) {
+	vec4_t color = { 1, 1, 1, 1 };
+
+	color[3] = alpha;
+	CG_DrawStringExt( 320 - CG_DrawStrlen( s ) * cw / 2, y, s, color, qfalse, qtrue, cw, ch, 0 );
+}
+
+static void CG_FtBar( int y, int value, const char *label, const float *fill ) {
+	static const vec4_t back = { 0, 0, 0, 0.55f };
+	static const vec4_t frame = { 1, 1, 1, 0.6f };
+	int pct = value - 1;
+
+	if ( pct < 0 ) pct = 0;
+	if ( pct > 100 ) pct = 100;
+	CG_FtCentered( y - 18, label, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 1 );
+	CG_FillRect( 220, y, 200, 10, back );
+	CG_FillRect( 220, y, 2 * pct, 10, fill );
+	CG_DrawRect( 220, y, 200, 10, 1, frame );
+}
+
+static void CG_DrawFreezeTag( void ) {
+	static const vec4_t ice = { 0.35f, 0.8f, 1, 0.9f };
+	static const vec4_t warm = { 0.4f, 1, 0.5f, 0.9f };
+	const playerState_t *ps = &cg.snap->ps;
+	int red = ps->stats[STAT_FT_RED], blue = ps->stats[STAT_FT_BLUE];
+	int t;
+
+	if ( cgs.gametype != GT_TEAM || ( !red && !blue ) ) {
+		return;
+	}
+
+	// RED 3/4 · ROUND 5 · BLUE 1/4, under the top of the screen
+	CG_FtCentered( 52, va( "^1RED %i/%i alive   ^7ROUND %i   ^4BLUE %i/%i alive",
+		red & 255, red >> 8, cgs.scores1 + cgs.scores2 + 1, blue & 255, blue >> 8 ),
+		SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 1 );
+
+	if ( ps->stats[STAT_THAW] ) {
+		CG_FtCentered( 150, "^5FROZEN", FT_CHAR_W, FT_CHAR_H, 1 );
+		CG_FtBar( 330, ps->stats[STAT_THAW], ps->stats[STAT_THAW] > 1
+			? va( "^7a teammate is thawing you  %i%%", ps->stats[STAT_THAW] - 1 )
+			: "^7wait for a teammate to stand next to you", ice );
+	} else if ( ps->stats[STAT_THAWING] ) {
+		CG_FtBar( 330, ps->stats[STAT_THAWING],
+			va( "^7thawing a teammate  %i%%  - stay close", ps->stats[STAT_THAWING] - 1 ), warm );
+	}
+
+	// round banner: 3 s, fading out over the last second
+	t = cg.time - cg.ftBannerTime;
+	if ( cg.ftBannerTime && t >= 0 && t < 3000 ) {
+		float alpha = t < 2000 ? 1.0f : ( 3000 - t ) / 1000.0f;
+
+		CG_FtCentered( 100, cg.ftBanner, FT_CHAR_W, FT_CHAR_H, alpha );
+		CG_FtCentered( 140, cg.ftBannerSub, BIGCHAR_WIDTH, BIGCHAR_HEIGHT, alpha );
+	}
+}
+
 static void CG_Draw2D(stereoFrame_t stereoFrame)
 {
 #ifdef MISSIONPACK
@@ -2609,6 +2676,8 @@ static void CG_Draw2D(stereoFrame_t stereoFrame)
 	CG_DrawLowerRight();
 	CG_DrawLowerLeft();
 #endif
+
+	CG_DrawFreezeTag();
 
 	if ( !CG_DrawFollow() ) {
 		CG_DrawWarmup();

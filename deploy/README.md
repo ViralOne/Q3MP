@@ -228,6 +228,12 @@ Deaths to the world (lava, falling) or your own rockets are normal deaths,
 and `/kill` is blocked while frozen. Bots ignore frozen enemies and thaw
 teammates only when they happen to pass by.
 
+The fork's game client draws the freeze tag HUD: a *RED 3/4 alive · ROUND 5 ·
+BLUE 1/4 alive* line at the top, **FROZEN** with a thaw progress bar while you
+wait (the teammate thawing you sees the same bar), and a round banner —
+*RED WINS THE ROUND* with the score and the team voice, then *ROUND n · FIGHT!*
+when everyone respawns.
+
 ## Mutators
 
 The admin panel's *Mutators* card stacks extra rules on top of any mode:

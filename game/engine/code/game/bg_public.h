@@ -215,7 +215,12 @@ typedef enum {
 	STAT_ARMOR,				
 	STAT_DEAD_YAW,					// look this direction when dead (FIXME: get rid of?)
 	STAT_CLIENTS_READY,				// bit mask of clients wishing to exit the intermission (FIXME: configstring?)
-	STAT_MAX_HEALTH					// health / armor limit, changeable by handicap
+	STAT_MAX_HEALTH,				// health / armor limit, changeable by handicap
+	// freeze tag (fork qagame g_freeze): 0 = off, else 1 + percent
+	STAT_THAW,						// you are frozen; how far a teammate has thawed you
+	STAT_THAWING,					// you are thawing a teammate; how far along
+	STAT_FT_RED,					// red players alive | total << 8 (0 = not freeze tag)
+	STAT_FT_BLUE					// blue players alive | total << 8
 } statIndex_t;
 
 

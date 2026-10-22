@@ -553,6 +553,11 @@ typedef struct {
 	skulltrail_t	skulltrails[MAX_CLIENTS];
 #endif
 
+	// freeze tag round banner (server ftround / ftstart)
+	int			ftBannerTime;
+	char		ftBanner[64];
+	char		ftBannerSub[96];
+
 	// centerprinting
 	int			centerPrintTime;
 	int			centerPrintCharWidth;

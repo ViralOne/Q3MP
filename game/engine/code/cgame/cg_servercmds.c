@@ -1008,6 +1008,27 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	// freeze tag: a round was won ("ftround <winner> <loser> <red> <blue>")
+	if ( !strcmp( cmd, "ftround" ) ) {
+		int winner = atoi( CG_Argv( 1 ) );
+
+		Com_sprintf( cg.ftBanner, sizeof( cg.ftBanner ), "%s WINS THE ROUND",
+			winner == TEAM_RED ? "^1RED" : "^4BLUE" );
+		Com_sprintf( cg.ftBannerSub, sizeof( cg.ftBannerSub ), "^1RED %s ^7- ^4%s BLUE^7  -  %s team is frozen",
+			CG_Argv( 3 ), CG_Argv( 4 ), atoi( CG_Argv( 2 ) ) == TEAM_RED ? "^1red^7" : "^4blue^7" );
+		cg.ftBannerTime = cg.time;
+		trap_S_StartLocalSound( winner == TEAM_RED ? cgs.media.redScoredSound : cgs.media.blueScoredSound, CHAN_ANNOUNCER );
+		return;
+	}
+	// freeze tag: everyone respawned ("ftstart <round>")
+	if ( !strcmp( cmd, "ftstart" ) ) {
+		Com_sprintf( cg.ftBanner, sizeof( cg.ftBanner ), "ROUND %s", CG_Argv( 1 ) );
+		Q_strncpyz( cg.ftBannerSub, "FIGHT!", sizeof( cg.ftBannerSub ) );
+		cg.ftBannerTime = cg.time;
+		trap_S_StartLocalSound( cgs.media.countFightSound, CHAN_ANNOUNCER );
+		return;
+	}
+
 	// end-of-match map vote ballot (server g_mapvote), low on the scoreboard
 	if ( !strcmp( cmd, "mapvote" ) ) {
 		CG_CenterPrint( CG_Argv(1), SCREEN_HEIGHT * 0.70, SMALLCHAR_WIDTH );

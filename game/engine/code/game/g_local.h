@@ -333,7 +333,6 @@ struct gclient_s {
 	// freeze tag (g_freeze)
 	qboolean	frozen;
 	int			thawProgress;		// ms a teammate has stood by
-	int			thawNotice;			// next "thawing n%" message
 	// weapon arenas: untouchable until this time, or until firing
 	int			spawnProtectUntil;
 	vec3_t		unlagOrigin, unlagMins, unlagMaxs;
