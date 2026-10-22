@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # All-in-one image: ioq3ded + WebSocket-to-UDP gateway + Caddy (TLS, launcher,
 # /assets PK3 serving) in one container, supervised by deploy/allinone/start.sh.
 # Same pieces as the three-container docker-compose.yml stack, for hosts where
@@ -8,15 +9,21 @@
 # this image needs deploy/public/.
 
 # --- ioq3ded + QVM pk3s (same steps as deploy/server/Dockerfile) -------------
+# Compiler output is kept in a BuildKit cache mount (ccache), so a rebuild after
+# a small C change only recompiles what changed — this matters most when the
+# amd64 image is built on an ARM Mac, where every compile runs emulated.
 FROM buildpack-deps:bookworm-scm AS build
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential cmake ninja-build zip bzip2 libcurl4-openssl-dev \
+  && apt-get install -y --no-install-recommends build-essential cmake ninja-build zip bzip2 libcurl4-openssl-dev ccache \
   && rm -rf /var/lib/apt/lists/*
 
 COPY game/engine /src/engine
 WORKDIR /src/build
-RUN cmake -S /src/engine -B . -G Ninja \
+ENV CCACHE_DIR=/ccache
+RUN --mount=type=cache,target=/ccache,id=q3mp-ccache \
+    cmake -S /src/engine -B . -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
       -DBUILD_CLIENT=OFF \
       -DBUILD_SERVER=ON \
       -DBUILD_GAME_LIBRARIES=OFF \
@@ -25,7 +32,8 @@ RUN cmake -S /src/engine -B . -G Ninja \
       -DBUILD_RENDERER_GL2=OFF \
       -DUSE_OPENAL=OFF \
       -DUSE_VOIP=OFF \
-  && cmake --build . --parallel "$(nproc)"
+  && cmake --build . --parallel "$(nproc)" \
+  && ccache --show-stats --verbose | grep -E "Hits|Misses" || true
 
 # baseq3 VM paths only (the missionpack targets emit same-named QVMs)
 RUN mkdir -p /stage/vm \
