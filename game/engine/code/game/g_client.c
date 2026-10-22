@@ -1407,6 +1407,14 @@ void ClientSpawn(gentity_t *ent) {
 		client->ps.powerups[PW_HASTE] = level.time + 0x7fffff;
 	}
 
+	// mutators: the grappling hook for everyone, permanent quad
+	if ( g_grapple.integer ) {
+		client->ps.stats[STAT_WEAPONS] |= ( 1 << WP_GRAPPLING_HOOK );
+	}
+	if ( g_quadAll.integer ) {
+		client->ps.powerups[PW_QUAD] = level.time + 0x7fffff;
+	}
+
 	// weapon arenas: a short spawn protection, shown as the battle suit shell
 	client->spawnProtectUntil = 0;
 	if ( g_weaponMode.integer && g_spawnProtect.integer > 0 ) {
@@ -1449,6 +1457,10 @@ void ClientSpawn(gentity_t *ent) {
 			client->ps.weapon = 1;
 
 			for (i = WP_NUM_WEAPONS - 1 ; i > 0 ; i--) {
+				// never spawn holding the (mutator) grappling hook
+				if ( i == WP_GRAPPLING_HOOK ) {
+					continue;
+				}
 				if (client->ps.stats[STAT_WEAPONS] & (1 << i)) {
 					client->ps.weapon = i;
 					break;

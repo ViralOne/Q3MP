@@ -768,6 +768,12 @@ extern	vmCvar_t	g_weaponMode;		// 0 normal, WEAPONMODE_INSTAGIB, WEAPONMODE_ROCK
 extern	vmCvar_t	g_spawnProtect;		// ms of spawn protection in the weapon arenas (0 = off)
 extern	vmCvar_t	g_selfDamage;		// 0: your own weapons push you but never hurt you
 extern	vmCvar_t	g_gravityOverride;	// >0: g_gravity on every map load, instead of the map's
+// mutators (admin panel): stack on top of any mode
+extern	vmCvar_t	g_vampire;			// share of damage dealt that heals the attacker (0 = off)
+extern	vmCvar_t	g_grapple;			// everyone carries the grappling hook
+extern	vmCvar_t	g_quadAll;			// everyone has quad damage, always
+#define VAMPIRE_MAX_HEALTH	200
+void G_MutatorsFrame( void );
 
 extern	vmCvar_t	g_freeze;			// freeze tag in team deathmatch (latched)
 extern	vmCvar_t	g_thawTime;			// seconds a teammate needs to thaw someone

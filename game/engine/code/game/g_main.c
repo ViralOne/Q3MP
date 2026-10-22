@@ -50,6 +50,9 @@ vmCvar_t	g_weaponMode;
 vmCvar_t	g_spawnProtect;
 vmCvar_t	g_selfDamage;
 vmCvar_t	g_gravityOverride;
+vmCvar_t	g_vampire;
+vmCvar_t	g_grapple;
+vmCvar_t	g_quadAll;
 vmCvar_t	g_freeze;
 vmCvar_t	g_thawTime;
 vmCvar_t	g_unlagged;
@@ -146,6 +149,10 @@ static cvarTable_t		gameCvarTable[] = {
 	{ &g_selfDamage, "g_selfDamage", "1", CVAR_SERVERINFO, 0, qtrue  },
 	// every map load sets g_gravity from the map; this replaces that value
 	{ &g_gravityOverride, "g_gravityOverride", "0", CVAR_SERVERINFO, 0, qfalse  },
+	// mutators: vampire (0..1 of the damage dealt), grappling hook, quad for all
+	{ &g_vampire, "g_vampire", "0", CVAR_SERVERINFO, 0, qtrue  },
+	{ &g_grapple, "g_grapple", "0", CVAR_SERVERINFO, 0, qtrue  },
+	{ &g_quadAll, "g_quadAll", "0", CVAR_SERVERINFO, 0, qtrue  },
 	// freeze tag (team deathmatch); latched like the weapon modes
 	{ &g_freeze, "g_freeze", "0", CVAR_SERVERINFO | CVAR_LATCH, 0, qfalse  },
 	{ &g_thawTime, "g_thawTime", "3", CVAR_ARCHIVE, 0, qtrue  },
@@ -2196,6 +2203,7 @@ void G_RunFrame( int levelTime ) {
 	}
 
 	G_FreezeTagFrame();
+	G_MutatorsFrame();
 
 	// unlagged: remember where everyone is this frame
 	ent = &g_entities[0];

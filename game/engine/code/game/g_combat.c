@@ -1046,6 +1046,23 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			targ->health, take, asave );
 	}
 
+	// vampire mutator: the attacker heals by a share of the health taken
+	if ( g_vampire.value > 0 && client && take > 0 && attacker->client && attacker != targ
+		&& !OnSameTeam( targ, attacker ) && attacker->health > 0 && targ->health > 0 ) {
+		int heal = (int)( ( take < targ->health ? take : targ->health ) * g_vampire.value );
+
+		if ( heal > 0 && attacker->health < VAMPIRE_MAX_HEALTH ) {
+			attacker->health += heal;
+			if ( attacker->health > VAMPIRE_MAX_HEALTH ) {
+				attacker->health = VAMPIRE_MAX_HEALTH;
+			}
+			attacker->client->ps.stats[STAT_HEALTH] = attacker->health;
+			if ( g_debugDamage.integer ) {
+				G_LogPrintf( "Vampire: %i %i: healed %i\n", (int)( attacker - g_entities ), heal, attacker->health );
+			}
+		}
+	}
+
 	// add to the damage inflicted on a player this frame
 	// the total will be turned into screen blends and view angle kicks
 	// at the end of the frame
@@ -1458,4 +1475,55 @@ void G_FreezeTagFrame( void ) {
 	trap_SendServerCommand( -1, va( "cp \"%s^7 team wins the round\n^7%s team is frozen\"",
 		winner == TEAM_RED ? "^1Red" : "^4Blue", loser == TEAM_RED ? "^1red" : "^4blue" ) );
 	level.freezeRoundEnd = level.time + FREEZE_ROUND_PAUSE;
+}
+
+/*
+============
+G_MutatorsFrame
+
+g_grapple and g_quadAll are handed out on spawn; when the admin toggles them
+mid-match, living players get (or lose) them right away instead.
+============
+*/
+void G_MutatorsFrame( void ) {
+	static int	grapple = -1, quad = -1;
+	gentity_t	*ent;
+	gclient_t	*cl;
+	int			i, w;
+
+	if ( grapple == g_grapple.integer && quad == g_quadAll.integer ) {
+		return;
+	}
+	if ( grapple == -1 ) {			// first frame: spawns already handled it
+		grapple = g_grapple.integer;
+		quad = g_quadAll.integer;
+		return;
+	}
+	for ( i = 0, ent = g_entities; i < level.maxclients; i++, ent++ ) {
+		cl = ent->client;
+		if ( !ent->inuse || !cl || cl->sess.sessionTeam == TEAM_SPECTATOR || ent->health <= 0 ) {
+			continue;
+		}
+		if ( grapple != g_grapple.integer ) {
+			if ( g_grapple.integer ) {
+				cl->ps.stats[STAT_WEAPONS] |= ( 1 << WP_GRAPPLING_HOOK );
+			} else {
+				cl->ps.stats[STAT_WEAPONS] &= ~( 1 << WP_GRAPPLING_HOOK );
+				if ( cl->ps.weapon == WP_GRAPPLING_HOOK ) {
+					for ( w = WP_NUM_WEAPONS - 1; w > WP_NONE; w-- ) {
+						if ( w != WP_GRAPPLING_HOOK && ( cl->ps.stats[STAT_WEAPONS] & ( 1 << w ) ) ) {
+							break;
+						}
+					}
+					cl->ps.weapon = w;
+					cl->ps.weaponstate = WEAPON_READY;
+				}
+			}
+		}
+		if ( quad != g_quadAll.integer ) {
+			cl->ps.powerups[PW_QUAD] = g_quadAll.integer ? level.time + 0x7fffff : 0;
+		}
+	}
+	grapple = g_grapple.integer;
+	quad = g_quadAll.integer;
 }

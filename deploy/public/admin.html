@@ -17,6 +17,14 @@
     padding:7px 10px; border-radius:3px; outline-color:#d94a36; }
   input[type=checkbox] { padding:0; width:auto; accent-color:#d94a36; }
   #flags label { display:flex; gap:6px; align-items:center; font-size:12px; color:#bbb; cursor:pointer; }
+  .mutGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:8px; margin-bottom:8px; }
+  .mutGrid label { display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border:1px solid #333;
+    border-radius:4px; cursor:pointer; font-size:12px; color:#ccc; }
+  .mutGrid label:hover { border-color:#555; }
+  .mutGrid label.on { border-color:#d94a36; }
+  .mutGrid input { accent-color:#d94a36; margin-top:2px; }
+  .mutGrid b { color:#eee; font-weight:700; display:block; }
+  .mutGrid .live { color:#d94a36; font-size:10px; margin-left:4px; }
   button { background:#d94a36; border:0; color:#fff; font:inherit; padding:7px 14px;
     cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
   button.ghost { background:#222; color:#bbb; }
@@ -113,6 +121,12 @@
     <div id="peMaps" class="peMaps"></div>
   </div>
   <div class="kv" id="presetState" style="font-size:12px">one click sets the gametype, limits and a map rotation from this server's maps, then loads the first map (everyone reconnects for a moment)</div>
+</div>
+
+<div class="card">
+  <h2>Mutators</h2>
+  <div id="mutators" class="mutGrid"></div>
+  <div class="kv" id="mutState" style="font-size:12px">extra rules on top of any game mode; kept when the mode changes and after a server restart</div>
 </div>
 
 <div class="card">
@@ -713,6 +727,63 @@ $('chatVote').addEventListener('click', async (e) => {
   $('chatVoteState').textContent = body.enabled ? '· on' : '· off';
 });
 
+// --- mutators (gateway /admin/api/mutators) ----------------------------------------
+
+let mutators = [];
+
+function renderMutators() {
+  $('mutators').innerHTML = '';
+  for (const m of mutators) {
+    const label = document.createElement('label');
+    label.className = m.on ? 'on' : '';
+    label.title = m.on && !m.live ? 'saved, waiting for the server to apply it' : '';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = m.on;
+    box.addEventListener('click', (e) => { e.preventDefault(); toggleMutator(m.id); });
+    const text = document.createElement('span');
+    const name = document.createElement('b');
+    name.textContent = m.name;
+    if (m.live) {
+      const live = document.createElement('span');
+      live.className = 'live';
+      live.textContent = m.on ? '● live' : '● from mode';
+      if (!m.on) live.title = 'the current game mode itself has this rule';
+      name.append(live);
+    }
+    text.append(name, document.createTextNode(m.description));
+    label.append(box, text);
+    $('mutators').append(label);
+  }
+}
+
+async function loadMutators() {
+  try {
+    const response = await fetch('/admin/api/mutators');
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { $('mutState').textContent = body.error || `HTTP ${response.status}`; return; }
+    mutators = body.mutators;
+    renderMutators();
+  } catch (e) {
+    $('mutState').textContent = 'mutators failed: ' + (e && e.message || e);
+  }
+}
+
+async function toggleMutator(id) {
+  if (!$('pw').value) { $('mutState').textContent = 'unlock with the password first'; return; }
+  const on = mutators.filter((m) => (m.id === id ? !m.on : m.on)).map((m) => m.id);
+  $('mutState').textContent = 'applying…';
+  const response = await fetch('/admin/api/mutators', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: $('pw').value, on }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) { $('mutState').textContent = body.error || `HTTP ${response.status}`; return; }
+  $('mutState').textContent = `${on.length ? 'on: ' + on.join(', ') : 'all off'} — ${body.note}`;
+  await loadMutators();
+}
+
 // --- map pk3 upload / delete (gateway /admin/api/paks) ----------------------------
 
 function fmtSize(n) {
@@ -807,6 +878,8 @@ loadPresets();
 loadAas();
 loadChatVote();
 setInterval(loadChatVote, 5000);
+loadMutators();
+setInterval(loadMutators, 10000);
 </script>
 </body>
 </html>

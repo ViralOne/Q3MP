@@ -26,8 +26,24 @@ const ROTATION_MAX = 16;
 const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
 
 // Settings every preset writes unless it says otherwise, so switching away
-// from a mode never leaves its physics behind.
-const BASE_CVARS = { g_gravityOverride: 0, g_selfDamage: 1 };
+// from a mode never leaves its physics (or a mutator) behind.
+const BASE_CVARS = { g_gravityOverride: 0, g_selfDamage: 1, g_vampire: 0, g_grapple: 0, g_quadAll: 0 };
+
+// Mutators (admin panel): extra rules stacked on top of whatever mode runs.
+// Each is a set of fork qagame cvars; the admin's choice is saved and laid
+// over every preset, and put back if the server restarts.
+export const MUTATORS = [
+  { id: "lowgrav", name: "Low gravity", description: "gravity 400 — jumps twice as high",
+    cvars: { g_gravityOverride: 400 } },
+  { id: "freerj", name: "Free rocket jumps", description: "your own splash pushes you but does no damage",
+    cvars: { g_selfDamage: 0 } },
+  { id: "vampire", name: "Vampire", description: "half the damage you deal heals you (up to 200)",
+    cvars: { g_vampire: 0.5 } },
+  { id: "grapple", name: "Grappling hook", description: "everyone carries the hook (mouse wheel, or weapon 10)",
+    cvars: { g_grapple: 1 } },
+  { id: "quad", name: "Quad for all", description: "permanent quad damage for everyone",
+    cvars: { g_quadAll: 1 } },
+];
 
 export const PRESETS = [
   {
@@ -229,9 +245,49 @@ export function presetCommands(preset, availableMaps) {
   return { commands, maps };
 }
 
-// A preset's settings, with the shared defaults filled in.
-export function presetCvars(preset) {
-  return { ...BASE_CVARS, ...preset.cvars };
+// A preset's settings: shared defaults, the preset's own, then the mutators
+// the admin turned on.
+export function presetCvars(preset, mutatorIds = activeMutators()) {
+  const out = { ...BASE_CVARS, ...preset.cvars };
+  for (const m of MUTATORS) if (mutatorIds.includes(m.id)) Object.assign(out, m.cvars);
+  return out;
+}
+
+export function activeMutators() {
+  const ids = getSetting("mutators", []);
+  return Array.isArray(ids) ? ids.filter((id) => MUTATORS.some((m) => m.id === id)) : [];
+}
+
+export function saveMutators(ids) {
+  const list = [...new Set((Array.isArray(ids) ? ids : []).map(String))];
+  const unknown = list.filter((id) => !MUTATORS.some((m) => m.id === id));
+  if (unknown.length) throw Object.assign(new Error(`unknown mutator: ${unknown.join(", ")}`), { status: 400 });
+  setSetting("mutators", list);
+  return list;
+}
+
+// The mutator cvars as the server should have them while `preset` runs
+// (or with no known preset, over the plain defaults): a vstr and its call
+// (rcon runs one command per packet). g_gravity is set too:
+// g_gravityOverride alone waits for the next map.
+export function mutatorCommands(preset) {
+  const all = presetCvars(preset || { cvars: {} });
+  const wanted = Object.fromEntries(Object.keys(BASE_CVARS).map((k) => [k, all[k]]));
+  wanted.g_gravity = wanted.g_gravityOverride > 0 ? wanted.g_gravityOverride : 800;
+  return [`set q3mutators "${Object.entries(wanted).map(([k, v]) => `set ${k} ${v}`).join(" ; ")}"`, "vstr q3mutators"];
+}
+
+// Mutators the server is running now, from its serverinfo.
+export function mutatorsOfInfo(info) {
+  return MUTATORS.filter((m) => Object.entries(m.cvars).every(([k, v]) => Number(info[k] ?? BASE_CVARS[k]) === v))
+    .map((m) => m.id);
+}
+
+// Does the server's serverinfo match what the presets and mutators want?
+export function mutatorsInSync(info) {
+  const preset = presetOfInfo(info);
+  const all = presetCvars(preset || { cvars: {} });
+  return Object.keys(BASE_CVARS).every((k) => Number(info[k] ?? BASE_CVARS[k]) === Number(all[k]));
 }
 
 export function presetList(availableMaps) {

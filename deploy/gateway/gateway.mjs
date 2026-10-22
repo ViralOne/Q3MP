@@ -36,7 +36,8 @@ import { WebSocketServer } from "ws";
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
 import { startStats, statsSnapshot, onLogLine } from "./stats.mjs";
 import { startChatVote } from "./chatvote.mjs";
-import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax, presetOfInfo, presetAliases } from "./presets.mjs";
+import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax, presetOfInfo, presetAliases,
+  MUTATORS, activeMutators, saveMutators, mutatorCommands, mutatorsOfInfo, mutatorsInSync } from "./presets.mjs";
 import { hasBspc, queueAas, aasJobs, aasPakName } from "./aas.mjs";
 
 const env = (name, fallback) => process.env[name] || fallback;
@@ -221,6 +222,19 @@ async function applyPreset(id) {
 }
 
 let chatVote = null;
+
+// Mutators: put the server's cvars back in line with the saved choice when
+// they differ (a toggle in the admin panel, or a restarted server that came
+// back with its config defaults).
+async function syncMutators({ force = false } = {}) {
+  statusCache.at = 0;
+  const status = await serverStatus();
+  if (!status) throw Object.assign(new Error("game server not answering"), { status: 502 });
+  if (!force && mutatorsInSync(status.info)) return false;
+  await rconBatch(mutatorCommands(presetOfInfo(status.info)));
+  statusCache.at = 0;
+  return true;
+}
 
 function authorized(body) {
   if (!options.rconPassword) return false;
@@ -602,6 +616,7 @@ async function handleAdmin(request, response) {
         gametype: Number(info.g_gametype ?? 0),
         weaponMode: Number(info.g_weaponMode ?? 0),
         mode: (() => { const p = presetOfInfo(info); return p ? { id: p.id, name: p.name } : null; })(),
+        mutators: MUTATORS.filter((m) => mutatorsOfInfo(info).includes(m.id)).map((m) => ({ id: m.id, name: m.name })),
         chatVote: chatVote ? chatVote.status().enabled : false,
         players: status.players.length,
         maxclients: Number(info.sv_maxclients ?? 0),
@@ -784,6 +799,31 @@ async function handleAdmin(request, response) {
       }
       return true;
     }
+    // mutators: GET the list (saved choice + what the server runs), PUT
+    // {password, on:[ids]} to save and apply right away
+    if (url.pathname === "/admin/api/mutators") {
+      if (request.method === "GET") {
+        const status = await serverStatus().catch(() => null);
+        const live = status ? mutatorsOfInfo(status.info) : [];
+        const saved = activeMutators();
+        respond(response, 200, { mutators: MUTATORS.map((m) => ({ id: m.id, name: m.name, description: m.description,
+          on: saved.includes(m.id), live: live.includes(m.id) })) });
+        return true;
+      }
+      if (request.method === "PUT") {
+        const body = await readBody(request);
+        if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
+        try {
+          const on = saveMutators(body.on);
+          await syncMutators({ force: true });
+          respond(response, 200, { on, note: "gravity, rocket jumps and vampire apply at once; hook and quad go to everyone alive now and on every spawn" });
+        } catch (error) {
+          respond(response, error.status || 500, { error: String(error.message || error) });
+        }
+        return true;
+      }
+      return respond(response, 405, { error: "method not allowed" }), true;
+    }
     // chat mode voting (!modes / !mode / !yes / !no): status and on/off
     if (url.pathname === "/admin/api/chatvote") {
       if (!chatVote) return respond(response, 503, { error: "chat vote not running (stats log off)" }), true;
@@ -964,6 +1004,13 @@ httpServer.listen(options.gatewayPort, options.gatewayHost, () => {
     });
     onLogLine(chatVote.onLine);
   }
+  // mutators survive server restarts: check after every map load, and now
+  const resync = () => syncMutators().then((changed) => {
+    if (changed) console.log(`[mutators] applied ${activeMutators().join(", ") || "none"}`);
+  }).catch(() => { /* server not up yet: the next map load or tick retries */ });
+  onLogLine((line) => { if (/^\s*\d+:\d+\s+InitGame:/.test(line)) setTimeout(resync, 1500); });
+  setTimeout(resync, 5000);
+  setInterval(resync, 60_000).unref?.();
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

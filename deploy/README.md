@@ -216,6 +216,25 @@ Deaths to the world (lava, falling) or your own rockets are normal deaths,
 and `/kill` is blocked while frozen. Bots ignore frozen enemies and thaw
 teammates only when they happen to pass by.
 
+## Mutators
+
+The admin panel's *Mutators* card stacks extra rules on top of any mode:
+
+| Mutator | cvars | Effect |
+| --- | --- | --- |
+| **Low gravity** | `g_gravityOverride 400` | jumps twice as high |
+| **Free rocket jumps** | `g_selfDamage 0` | your own splash pushes you but does no damage |
+| **Vampire** | `g_vampire 0.5` | half the health you take from enemies heals you (up to 200) |
+| **Grappling hook** | `g_grapple 1` | everyone carries the hook — mouse wheel, or `weapon 10` in the console |
+| **Quad for all** | `g_quadAll 1` | permanent quad damage for everyone |
+
+The choice is saved in `PRESETS_FILE`, laid over every preset, and put back
+by the gateway after a server restart (it compares the serverinfo after each
+map load and once a minute). Gravity, rocket jumps and vampire apply at once;
+the hook and quad go to everyone alive right away and on every spawn. A mode's
+own rule (Excessive's free rocket jumps) shows as "from mode". The start page
+lists active mutators next to the mode, e.g. *Free for all + vampire*.
+
 ## Unlagged (hitscan lag compensation)
 
 Browser players reach the server through WebSockets (and often Cloudflare),
