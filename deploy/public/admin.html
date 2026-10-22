@@ -125,8 +125,8 @@
     <select id="gt">
       <option value="0">FFA (0)</option>
       <option value="1">Tournament 1v1 (1)</option>
-      <option value="3">CTF (3)</option>
-      <option value="4">Team Deathmatch (4)</option>
+      <option value="3">Team Deathmatch (3)</option>
+      <option value="4">CTF (4)</option>
     </select>
     <button class="ghost" data-cmd="g_gametype %gt%">Set (applies next map)</button>
     <label class="kv" for="fl">Fraglimit:</label>
@@ -507,7 +507,7 @@ async function refresh() {
 }
 
 function gametype(t) {
-  return { 0: 'FFA', 1: '1v1', 3: 'CTF', 4: 'TDM' }[String(t)] || t;
+  return { 0: 'FFA', 1: '1v1', 3: 'TDM', 4: 'CTF' }[String(t)] || t;
 }
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) =>

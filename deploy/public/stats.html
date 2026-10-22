@@ -93,7 +93,7 @@
 const $ = (id) => document.getElementById(id);
 const botsKey = 'q3.statsBots';
 $('bots').checked = localStorage.getItem(botsKey) === '1';
-const GAMETYPES = { 0: 'FFA', 1: 'Duel', 3: 'CTF', 4: 'TDM' };
+const GAMETYPES = { 0: 'FFA', 1: 'Duel', 3: 'TDM', 4: 'CTF' };
 let data = null;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>

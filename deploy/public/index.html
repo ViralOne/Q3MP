@@ -515,7 +515,7 @@ const serverHint = document.getElementById('serverHint');
 const serverField = document.getElementById('serverField');
 const directServer = Boolean(params.get('server') || params.get('connect'));
 
-const gametypeName = (n) => ({ 0: 'FFA', 1: 'duel', 3: 'CTF', 4: 'TDM' }[n] ?? `type ${n}`);
+const gametypeName = (n) => ({ 0: 'FFA', 1: 'duel', 3: 'TDM', 4: 'CTF' }[n] ?? `type ${n}`);
 const trunc = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 // flag fields arrive as numbers (master JSON) or strings ('0'/'1', status
 // probe); normalize so '0' is not truthy
