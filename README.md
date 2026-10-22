@@ -25,6 +25,7 @@ changes to the game code in `game/engine/code/game` and `code/cgame`):
 | **Freeze tag** | Team mode: kills freeze, teammates thaw, a fully frozen team loses the round |
 | **Unlagged** | Hitscan lag compensation — shots hit where the target was on your screen, important for browser latency |
 | **End-of-match map vote** | Players pick the next map from three by typing 1, 2 or 3 in chat |
+| **Mode voting in chat** | `!modes`, `!mode insta`, `!yes` / `!no` — players switch the game mode themselves, with easy aliases |
 | **Smarter bots** | Bot navigation generated with bspc for maps that lack it; auto-fill with a chosen difficulty |
 | **Leaderboard** | `/stats.html`: frags, K/D, wins, favourite weapon, maps and recent matches, from the server's own log |
 | **Admin panel** | Status, rcon console, flags, bots, game modes, map upload (`/admin.html`, password = `RCON_PASSWORD`) |

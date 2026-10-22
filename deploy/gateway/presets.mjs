@@ -96,15 +96,67 @@ export const PRESETS = [
   },
 ];
 
-// The console commands that apply `preset` given the available map names;
-// throws when the server has no map for it.
-// --- saved per-preset map lists ------------------------------------------------
+// Chat aliases players can type after !mode (see chatvote.mjs); the id
+// itself always works too.
+const ALIASES = {
+  ffa: ["dm", "deathmatch"],
+  tdm: ["team", "teams", "teamdm"],
+  ctf: ["flag", "flags", "capture"],
+  duel: ["1v1", "tourney"],
+  freeze: ["ft", "freezetag"],
+  instagib: ["insta", "ig", "rail"],
+  rockets: ["ra", "rocket", "rocketarena"],
+  excessive: ["e+", "xs", "eplus", "chaos"],
+};
+
+export function presetByAlias(word) {
+  const w = String(word || "").toLowerCase();
+  return PRESETS.find((p) => p.id === w || (ALIASES[p.id] || []).includes(w)) || null;
+}
+
+export function presetAliases(id) {
+  return ALIASES[id] || [];
+}
+
+// Which preset the server is running, from its serverinfo (works after a
+// gateway restart, and when someone set the cvars by hand).
+export function presetOfInfo(info) {
+  const gt = Number(info.g_gametype ?? 0);
+  const weapon = Number(info.g_weaponMode ?? 0);
+  if (weapon === 1) return PRESETS.find((p) => p.id === "instagib");
+  if (weapon === 2) return PRESETS.find((p) => p.id === "rockets");
+  if (weapon === 3) return PRESETS.find((p) => p.id === "excessive");
+  if (gt === 3 && Number(info.g_freeze ?? 0)) return PRESETS.find((p) => p.id === "freeze");
+  return PRESETS.find((p) => p.gametype === gt && p.cvars.g_weaponMode === 0 && !p.cvars.g_freeze) || null;
+}
+
+// --- saved per-preset map lists and settings (PRESETS_FILE) --------------------
 
 let saved = {};
+let settings = {};
 try {
-  saved = JSON.parse(readFileSync(presetsFile, "utf8")).maps ?? {};
+  const file = JSON.parse(readFileSync(presetsFile, "utf8"));
+  saved = file.maps ?? {};
+  settings = file.settings ?? {};
 } catch {
   saved = {};                                    // first start, or unreadable
+  settings = {};
+}
+
+function writeFile() {
+  mkdirSync(dirname(presetsFile), { recursive: true });
+  const temp = `${presetsFile}.tmp`;
+  writeFileSync(temp, JSON.stringify({ maps: saved, settings }, null, 2));
+  renameSync(temp, presetsFile);
+}
+
+export function getSetting(key, fallback) {
+  return key in settings ? settings[key] : fallback;
+}
+
+export function setSetting(key, value) {
+  settings = { ...settings, [key]: value };
+  writeFile();
 }
 
 // The rotation a preset plays: the admin's saved list (minus maps that were
@@ -130,15 +182,14 @@ export function savePresetMaps(id, maps, availableMaps) {
   if (list.length > ROTATION_MAX) throw Object.assign(new Error(`at most ${ROTATION_MAX} maps per rotation`), { status: 400 });
   const next = { ...saved };
   if (list.length) next[id] = list; else delete next[id];
-  mkdirSync(dirname(presetsFile), { recursive: true });
-  const temp = `${presetsFile}.tmp`;
-  writeFileSync(temp, JSON.stringify({ maps: next }, null, 2));
-  renameSync(temp, presetsFile);
   saved = next;
+  writeFile();
 }
 
 export const rotationMax = ROTATION_MAX;
 
+// The console commands that apply `preset` given the available map names;
+// throws when the server has no map for it.
 export function presetCommands(preset, availableMaps) {
   const { maps } = presetMaps(preset, availableMaps);
   if (!maps.length) throw new Error(`no maps for ${preset.name} in the server paks`);
@@ -165,6 +216,7 @@ export function presetCommands(preset, availableMaps) {
 export function presetList(availableMaps) {
   return PRESETS.map((p) => {
     const { maps, custom } = presetMaps(p, availableMaps);
-    return { id: p.id, name: p.name, description: p.description, gametype: p.gametype, maps, custom };
+    return { id: p.id, name: p.name, description: p.description, gametype: p.gametype, maps, custom,
+      aliases: presetAliases(p.id) };
   });
 }

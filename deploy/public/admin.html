@@ -93,6 +93,13 @@
 
 <div class="card">
   <h2>Game mode</h2>
+  <div class="row">
+    <label class="kv" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+      <input type="checkbox" id="chatVote"> players can vote a mode in chat
+      (<b>!modes</b>, <b>!mode insta</b>, <b>!yes</b> / <b>!no</b>)
+    </label>
+    <span class="kv" id="chatVoteState"></span>
+  </div>
   <div id="presets" class="presetGrid"></div>
   <div id="presetEditor" hidden>
     <div class="row" style="justify-content:space-between">
@@ -581,6 +588,7 @@ async function loadPresets() {
       b.disabled = !p.maps.length;
       b.title = p.maps.length ? `rotation: ${p.maps.join(' → ')}` : 'no maps for this mode in the server paks';
       b.innerHTML = `<b>${escapeHtml(p.name)}</b><span>${escapeHtml(p.description)}</span>` +
+        `<span>chat: !mode ${escapeHtml([p.id === 'instagib' ? 'insta' : p.id, ...(p.aliases || [])].slice(0, 3).join(' / '))}</span>` +
         `<span>${p.maps.length ? `${p.maps.length} maps${p.custom ? ' (your list)' : ''} · starts on ${escapeHtml(p.maps[0])}` : 'no maps available'}</span>`;
       b.addEventListener('click', () => applyPreset(p));
       const e = document.createElement('button');
@@ -674,6 +682,37 @@ async function applyPreset(p) {
   setTimeout(refresh, 2500);
 }
 
+// --- chat mode voting (gateway /admin/api/chatvote) --------------------------------
+
+async function loadChatVote() {
+  try {
+    const response = await fetch('/admin/api/chatvote');
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) { $('chatVoteState').textContent = body.error || `HTTP ${response.status}`; return; }
+    $('chatVote').checked = body.enabled;
+    $('chatVoteState').textContent = body.vote
+      ? `· vote running: ${body.vote.name} (called by ${body.vote.caller}, ${body.vote.yes} yes / ${body.vote.no} no)`
+      : body.cooldown ? `· next vote possible in ${body.cooldown} s` : '';
+  } catch (e) {
+    $('chatVoteState').textContent = 'chat vote status failed: ' + (e && e.message || e);
+  }
+}
+
+$('chatVote').addEventListener('click', async (e) => {
+  e.preventDefault();                     // flip only once the gateway agreed
+  if (!$('pw').value) { $('chatVoteState').textContent = 'unlock with the password first'; return; }
+  const want = !$('chatVote').checked;
+  const response = await fetch('/admin/api/chatvote', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password: $('pw').value, enabled: want }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) { $('chatVoteState').textContent = body.error || `HTTP ${response.status}`; return; }
+  $('chatVote').checked = body.enabled;
+  $('chatVoteState').textContent = body.enabled ? '· on' : '· off';
+});
+
 // --- map pk3 upload / delete (gateway /admin/api/paks) ----------------------------
 
 function fmtSize(n) {
@@ -766,6 +805,8 @@ loadMapList();
 loadPaks();
 loadPresets();
 loadAas();
+loadChatVote();
+setInterval(loadChatVote, 5000);
 </script>
 </body>
 </html>

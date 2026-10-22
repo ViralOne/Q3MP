@@ -13,7 +13,8 @@
 import { openSync, readSync, fstatSync, closeSync } from "node:fs";
 
 const logPath = process.env.STATS_LOG ?? "/state/baseq3/games.log";
-const POLL_MS = 5000;
+// 1 s: the chat mode vote (chatvote.mjs) reacts to chat through this follower
+const POLL_MS = 1000;
 const RECENT_MATCHES = 15;
 
 const WEAPONS = {
@@ -50,6 +51,13 @@ function emptyState() {
 let state = emptyState();
 let offset = 0;
 let carry = "";
+const listeners = [];
+
+// Other modules (the chat mode vote) get every new log line as it arrives;
+// history read at start-up is not replayed to them.
+export function onLogLine(fn) {
+  listeners.push(fn);
+}
 
 function player(name) {
   const key = plain(name).toLowerCase();
@@ -178,7 +186,12 @@ function poll() {
     offset += chunk.length;
     const lines = (carry + chunk.toString("latin1")).split("\n");
     carry = lines.pop();
-    for (const line of lines) onLine(line, live);
+    for (const line of lines) {
+      onLine(line, live);
+      if (live) for (const fn of listeners) {
+        try { fn(line); } catch { /* a listener never breaks the stats */ }
+      }
+    }
   } finally {
     closeSync(fd);
   }

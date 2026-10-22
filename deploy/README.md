@@ -214,6 +214,33 @@ projectiles and are not rewound. `g_unlaggedDebug 1` prints every rewind to
 the server log. Our own implementation in the fork's `qagame`
 (`g_weapon.c`), in the spirit of Neil Toronto's Unlagged mod.
 
+## Voting a game mode in chat
+
+Players switch modes themselves from in-game chat (`T`):
+
+| Chat | Does |
+| --- | --- |
+| `!modes` (or `!help`) | lists the modes: `ffa · tdm · ctf · duel · freeze · insta · rockets · excessive` |
+| `!mode insta` | starts a 20 s vote for a mode (the caller counts as *yes*) |
+| `!yes` / `!no` | answers the running vote |
+
+Short names work too: `dm`, `team`, `flag`, `1v1`, `ft`, `ig`/`rail`, `ra`,
+`e+`/`xs` (see `ALIASES` in `gateway/presets.mjs`). A vote passes with more
+*yes* than *no* (as soon as a majority says yes, or when time runs out); a
+tie or a *no* majority fails it. With a single human the mode changes right
+away; bots never vote. After a vote there is a 60 s cooldown. A passing vote
+applies the same preset as the admin panel — settings and your saved map
+rotation — announced 3 s ahead.
+
+Each human gets a short private welcome on joining (at most every 30
+minutes) naming the current mode and `!modes`, and the launcher shows the
+mode being played. Turn chat voting off with the checkbox in the admin
+*Game mode* card. The gateway reads the chat from the server's `games.log`
+and answers with `say` / `tell` over rcon. In the all-in-one image a mode
+switch is one `exec` of a generated `q3preset.cfg` (instant); the
+three-container stack sends the preset command by command (~15 s, rcon rate
+limit).
+
 ## End-of-match map vote
 
 When a match ends, a ballot with three maps appears over the scoreboard and

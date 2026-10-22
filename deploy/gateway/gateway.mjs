@@ -29,13 +29,14 @@ import { createServer } from "node:http";
 import { createSocket } from "node:dgram";
 import { timingSafeEqual } from "node:crypto";
 import { inflateRawSync } from "node:zlib";
-import { readdirSync, openSync, readSync, fstatSync, closeSync, statSync, accessSync, constants as fsConstants, createWriteStream, renameSync, unlinkSync } from "node:fs";
-import { basename } from "node:path";
+import { readdirSync, openSync, readSync, fstatSync, closeSync, statSync, accessSync, constants as fsConstants, createWriteStream, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { WebSocketServer } from "ws";
 
 import { startMasterHeartbeat } from "./master-heartbeat.mjs";
-import { startStats, statsSnapshot } from "./stats.mjs";
-import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax } from "./presets.mjs";
+import { startStats, statsSnapshot, onLogLine } from "./stats.mjs";
+import { startChatVote } from "./chatvote.mjs";
+import { PRESETS, presetCommands, presetList, savePresetMaps, rotationMax, presetOfInfo } from "./presets.mjs";
 import { hasBspc, queueAas, aasJobs, aasPakName } from "./aas.mjs";
 
 const env = (name, fallback) => process.env[name] || fallback;
@@ -174,6 +175,43 @@ async function rconBatch(commands) {
 }
 
 let activePreset = null;
+
+// Apply a game-mode preset (admin panel and chat vote): settings, rotation,
+// first map. Errors carry an HTTP status for the admin API.
+async function applyPreset(id) {
+  const preset = PRESETS.find((p) => p.id === id);
+  if (!preset) throw Object.assign(new Error(`unknown preset ${id}`), { status: 404 });
+  let plan;
+  try {
+    plan = presetCommands(preset, listAvailableMaps().maps);
+  } catch (error) {
+    throw Object.assign(error, { status: 409 });
+  }
+  // One `exec` of a config file is instant; ~20 separate rcon commands take
+  // ~15 s under the server's rcon rate limit. The file goes into the server's
+  // homepath game dir (next to games.log) when the gateway can write there.
+  let commands = plan.commands;
+  const presetCfg = process.env.STATS_LOG ? join(dirname(process.env.STATS_LOG), "q3preset.cfg") : "";
+  if (presetCfg) {
+    try {
+      writeFileSync(presetCfg, plan.commands.join("\n") + "\n");
+      commands = ["exec q3preset.cfg"];
+    } catch {
+      // read-only state (three-container stack): send the commands one by one
+    }
+  }
+  let outputs;
+  try {
+    outputs = await rconBatch(commands);
+  } catch (error) {
+    throw Object.assign(error, { status: 502 });
+  }
+  activePreset = { id: preset.id, name: preset.name, at: Date.now() };
+  return { preset: activePreset, maps: plan.maps, commands: plan.commands,
+    output: outputs[outputs.length - 1] || "(no response)" };
+}
+
+let chatVote = null;
 
 function authorized(body) {
   if (!options.rconPassword) return false;
@@ -505,6 +543,8 @@ async function handleAdmin(request, response) {
         mapname: String(info.mapname ?? "").toLowerCase(),
         gametype: Number(info.g_gametype ?? 0),
         weaponMode: Number(info.g_weaponMode ?? 0),
+        mode: (() => { const p = presetOfInfo(info); return p ? { id: p.id, name: p.name } : null; })(),
+        chatVote: chatVote ? chatVote.status().enabled : false,
         players: status.players.length,
         maxclients: Number(info.sv_maxclients ?? 0),
         hostname: info.sv_hostname ?? "",
@@ -679,28 +719,28 @@ async function handleAdmin(request, response) {
     if (url.pathname === "/admin/api/preset" && request.method === "POST") {
       const body = await readBody(request);
       if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
-      const preset = PRESETS.find((p) => p.id === body.id);
-      if (!preset) return respond(response, 404, { error: `unknown preset ${body.id}` }), true;
-      let plan;
       try {
-        plan = presetCommands(preset, listAvailableMaps().maps);
+        respond(response, 200, await applyPreset(String(body.id)));
       } catch (error) {
-        return respond(response, 409, { error: String(error.message || error) }), true;
+        respond(response, error.status || 500, { error: String(error.message || error) });
       }
-      let outputs;
-      try {
-        outputs = await rconBatch(plan.commands);
-      } catch (error) {
-        return respond(response, 502, { error: String(error.message || error) }), true;
-      }
-      activePreset = { id: preset.id, name: preset.name, at: Date.now() };
-      respond(response, 200, {
-        preset: activePreset,
-        maps: plan.maps,
-        commands: plan.commands,
-        output: outputs[outputs.length - 1] || "(no response)",
-      });
       return true;
+    }
+    // chat mode voting (!modes / !mode / !yes / !no): status and on/off
+    if (url.pathname === "/admin/api/chatvote") {
+      if (!chatVote) return respond(response, 503, { error: "chat vote not running (stats log off)" }), true;
+      if (request.method === "GET") {
+        respond(response, 200, { ...chatVote.status(), modes: chatVote.aliases() });
+        return true;
+      }
+      if (request.method === "PUT") {
+        const body = await readBody(request);
+        if (!authorized(body)) return respond(response, 403, { error: "bad password" }), true;
+        chatVote.setEnabled(Boolean(body.enabled));
+        respond(response, 200, chatVote.status());
+        return true;
+      }
+      return respond(response, 405, { error: "method not allowed" }), true;
     }
     if (url.pathname === "/admin/api/rcon" && request.method === "POST") {
       const body = await readBody(request);
@@ -857,6 +897,15 @@ httpServer.listen(options.gatewayPort, options.gatewayHost, () => {
   );
   startMasterHeartbeat((line) => console.log(`[heartbeat] ${line}`));
   startStats((line) => console.log(`[stats] ${line}`));
+  if (process.env.STATS_LOG !== "") {
+    chatVote = startChatVote({
+      rcon: (command) => rconCommand(command),
+      applyPreset,
+      serverInfo: () => serverStatus().then((s) => s && s.info),
+      log: (line) => console.log(`[chatvote] ${line}`),
+    });
+    onLogLine(chatVote.onLine);
+  }
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {

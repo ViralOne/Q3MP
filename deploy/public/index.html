@@ -756,9 +756,10 @@ async function loadGallery() {
     const sorted = [...maps].sort((a, b) =>
       (Number(b.name === now) - Number(a.name === now)) || a.name.localeCompare(b.name));
     galleryStrip.replaceChildren(...sorted.map((m) => mapCard(m, m.name === now)));
+    const mode = current && current.mode ? current.mode.name : (current ? gametypeName(current.gametype) : '');
     galleryTitle.textContent = now
-      ? `${maps.length} maps on this server · now: ${now} · ${gametypeName(current.gametype)}` +
-        `${({ 1: ' instagib', 2: ' rocket arena', 3: ' excessive' })[current.weaponMode] || ''} · ${current.players}/${current.maxclients} players`
+      ? `now: ${mode} on ${now} · ${current.players}/${current.maxclients} players` +
+        (current.chatVote ? ' · type !modes in game to vote a mode' : '') + ` · ${maps.length} maps`
       : `${maps.length} maps on this server`;
     galleryReady = true;
     showGallery();
