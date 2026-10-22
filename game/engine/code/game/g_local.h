@@ -253,7 +253,7 @@ typedef struct {
 // this structure is cleared on each ClientSpawn(),
 // except for 'client->pers' and 'client->sess'
 // unlagged: one recorded server frame of a player's position
-#define UNLAG_HISTORY	20		// 20 frames = 1 s at sv_fps 20
+#define UNLAG_HISTORY	40		// 40 frames: >1 s of history at sv_fps 30
 typedef struct {
 	vec3_t		origin, mins, maxs;
 	int			leveltime;

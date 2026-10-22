@@ -1106,6 +1106,11 @@ async function loadGame(playerName, playerModel, useConnect, useGateway, assets)
       '+set', 'name', playerName,
       '+set', 'model', playerModel,
       '+set', 'in_wheelPx', String(wheelPx),
+      // ask for 40 snapshots/s (servers cap it at their sv_fps), send input
+      // 60 times/s, and allow the bandwidth that takes on a full server
+      '+set', 'snaps', '40',
+      '+set', 'cl_maxpackets', '60',
+      '+set', 'rate', '50000',
       // like the official q3js client: fetch any server-referenced pk3 we lack
       ...(assets.cacheNs === 'q3js' ? ['+set', 'cl_allowDownload', '1'] : []),
       '+connect', useConnect,

@@ -12,6 +12,7 @@
 #   FS_HOMEPATH        default /state
 #   Q3_DATA_DIR        default /data
 #   Q3JS_SERVER_CONFIG full server config text; overrides the bundled default
+#   SV_FPS             server frames per second (default 30; ioquake3's own is 20)
 set -euo pipefail
 
 FS_BASEPATH="${FS_BASEPATH:-/game}"
@@ -69,6 +70,9 @@ ARGS=(
   +set fs_basepath "$FS_BASEPATH"
   +set fs_homepath "$FS_HOMEPATH"
   +set com_basegame "$BASEGAME"
+  # 30 updates/s instead of 20: smoother movement and hits; clients ask for
+  # up to this many snapshots ("snaps", set by the launcher)
+  +set sv_fps "${SV_FPS:-30}"
   +exec zz-server-defaults.cfg
 )
 if [ -n "${Q3_FS_GAME:-}" ]; then

@@ -16,6 +16,8 @@ services:
       # (the NAS Caddy + Cloudflare handle TLS for the public domain).
       DOMAIN: ":80"
       FS_BASEGAME: "${FS_BASEGAME:-baseq3}"
+      # server frames per second (ioquake3 default 20); higher = smoother, more CPU/bandwidth
+      SV_FPS: "${SV_FPS:-30}"
       RCON_PASSWORD: "${RCON_PASSWORD:?set RCON_PASSWORD in .env}"
       # List on q3js.com: players reach the gateway at wss://PUBLIC_HOST/ws
       # through Cloudflare + Caddy. Leave PUBLIC_HOST empty to stay unlisted.
