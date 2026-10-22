@@ -1398,6 +1398,13 @@ void ClientSpawn(gentity_t *ent) {
 		client->ps.ammo[WP_MACHINEGUN] = 0;
 		client->ps.ammo[WP_ROCKET_LAUNCHER] = WEAPONMODE_AMMO;
 		client->ps.stats[STAT_ARMOR] = 100;
+	} else if ( g_weaponMode.integer == WEAPONMODE_EXCESSIVE ) {
+		// every weapon, full, and haste for the whole life
+		for ( i = WP_MACHINEGUN; i <= WP_BFG; i++ ) {
+			client->ps.stats[STAT_WEAPONS] |= ( 1 << i );
+			client->ps.ammo[i] = WEAPONMODE_AMMO;
+		}
+		client->ps.powerups[PW_HASTE] = level.time + 0x7fffff;
 	}
 
 	// health will count down towards max_health

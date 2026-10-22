@@ -19,8 +19,11 @@ changes to the game code in `game/engine/code/game` and `code/cgame`):
 | **Custom maps** | Drop map pk3s into `quake3-data/baseq3/` (or upload them in the admin panel); browsers download exactly what the server hosts |
 | **Map gallery** | Levelshot screenshots of every map on the launcher and in the admin panel, current map highlighted |
 | **Map upload** | Upload / delete map pk3s from the admin panel, validated as maps-only |
-| **Game-mode presets** | One click for FFA, TDM, CTF, Duel, **Instagib** and **Rocket arena**, each with an editable map rotation |
+| **Game-mode presets** | One click for FFA, TDM, CTF, Duel, Freeze tag, Instagib, Rocket arena and Excessive, each with an editable map rotation |
 | **Instagib / Rocket arena** | Weapon-arena modes in the game code (`g_weaponMode`): one weapon, endless ammo, no pickups |
+| **Excessive** | e+-inspired chaos mode: every weapon, endless ammo, permanent haste, fast rockets, double knockback |
+| **Freeze tag** | Team mode: kills freeze, teammates thaw, a fully frozen team loses the round |
+| **Unlagged** | Hitscan lag compensation — shots hit where the target was on your screen, important for browser latency |
 | **End-of-match map vote** | Players pick the next map from three by typing 1, 2 or 3 in chat |
 | **Smarter bots** | Bot navigation generated with bspc for maps that lack it; auto-fill with a chosen difficulty |
 | **Leaderboard** | `/stats.html`: frags, K/D, wins, favourite weapon, maps and recent matches, from the server's own log |

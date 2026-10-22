@@ -163,7 +163,8 @@ navigation, so bots stand still there.
 ## Game-mode presets
 
 The admin panel's *Game mode* card switches the whole server with one click:
-**Free for all**, **Team deathmatch**, **Capture the flag** or **Duel**. Each
+**Free for all**, **Team deathmatch**, **Capture the flag**, **Duel**,
+**Freeze tag**, **Instagib**, **Rocket arena** or **Excessive**. Each
 sets the gametype and its limits, builds a map rotation (`d1`…`dN` vstr chain,
 up to 16 maps) from the maps in the server paks, and loads the first map.
 **edit maps** picks a mode's rotation yourself — tick maps in play order,
@@ -181,9 +182,13 @@ applies on map load — the presets reload the map for you):
 | --- | --- | --- |
 | **Instagib** | 1 | railgun only, endless ammo, any railgun hit kills |
 | **Rocket arena** | 2 | rocket launcher + gauntlet, endless rockets, spawn with 100 armor |
+| **Excessive** | 3 | inspired by Excessive Plus (e+): every weapon incl. BFG with endless ammo, permanent haste, rockets 1.5× faster; the preset adds double knockback (`g_knockback 2000`) and no falling damage (`dmflags 8`) |
 
-In both, every weapon, ammo, armor, health and powerup pickup is removed from
-the map (CTF flags stay) and dead players drop nothing. Bots play both modes.
+In Instagib and Rocket arena every weapon, ammo, armor, health and powerup
+pickup is removed from the map (CTF flags stay); Excessive removes only
+weapons and ammo. Dead players drop nothing. Bots play all three. Excessive is
+our own take on the e+ style — Excessive Plus itself is closed source and not
+included.
 
 **Freeze tag** (`g_freeze 1`, latched, team deathmatch): a kill by an enemy
 freezes the victim in place instead of killing them (it still counts as a

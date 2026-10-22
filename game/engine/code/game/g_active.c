@@ -417,6 +417,12 @@ void ClientTimerActions( gentity_t *ent, int msec ) {
 			client->ps.ammo[WP_RAILGUN] = WEAPONMODE_AMMO;
 		} else if ( g_weaponMode.integer == WEAPONMODE_ROCKETS ) {
 			client->ps.ammo[WP_ROCKET_LAUNCHER] = WEAPONMODE_AMMO;
+		} else if ( g_weaponMode.integer == WEAPONMODE_EXCESSIVE ) {
+			int w;
+
+			for ( w = WP_MACHINEGUN; w <= WP_BFG; w++ ) {
+				client->ps.ammo[w] = WEAPONMODE_AMMO;
+			}
 		}
 
 		// regenerate

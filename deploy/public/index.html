@@ -758,7 +758,7 @@ async function loadGallery() {
     galleryStrip.replaceChildren(...sorted.map((m) => mapCard(m, m.name === now)));
     galleryTitle.textContent = now
       ? `${maps.length} maps on this server · now: ${now} · ${gametypeName(current.gametype)}` +
-        `${({ 1: ' instagib', 2: ' rocket arena' })[current.weaponMode] || ''} · ${current.players}/${current.maxclients} players`
+        `${({ 1: ' instagib', 2: ' rocket arena', 3: ' excessive' })[current.weaponMode] || ''} · ${current.players}/${current.maxclients} players`
       : `${maps.length} maps on this server`;
     galleryReady = true;
     showGallery();
