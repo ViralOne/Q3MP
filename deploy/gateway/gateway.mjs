@@ -28,7 +28,7 @@
 import { createServer } from "node:http";
 import { createSocket } from "node:dgram";
 import { timingSafeEqual } from "node:crypto";
-import { inflateRawSync } from "node:zlib";
+import { inflateRawSync, deflateSync, crc32 } from "node:zlib";
 import { readdirSync, openSync, readSync, fstatSync, closeSync, statSync, accessSync, constants as fsConstants, createWriteStream, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { WebSocketServer } from "ws";
@@ -290,8 +290,9 @@ function readZipEntry(path, entry, maxBytes = 4 << 20) {
   }
 }
 
-// Browsers cannot show TGA; re-wrap raw/RLE 24/32-bit TGA pixels as a BMP.
-function tgaToBmp(tga) {
+// Browsers cannot show TGA; re-encode raw/RLE 24/32-bit TGA pixels as a PNG
+// (deflated RGB, a fraction of the size of the raw pixels).
+function tgaToPng(tga) {
   const type = tga[2];
   const w = tga.readUInt16LE(12), h = tga.readUInt16LE(14);
   const depth = tga[16], topDown = (tga[17] & 0x20) !== 0;
@@ -317,27 +318,55 @@ function tgaToBmp(tga) {
       }
     }
   }
-  // BMP: BGR rows like TGA, bottom-up, each row padded to 4 bytes
-  const row = (w * 3 + 3) & ~3;
-  const bmp = Buffer.alloc(54 + row * h);
-  bmp.write("BM", 0, "latin1");
-  bmp.writeUInt32LE(bmp.length, 2);
-  bmp.writeUInt32LE(54, 10);
-  bmp.writeUInt32LE(40, 14);
-  bmp.writeInt32LE(w, 18);
-  bmp.writeInt32LE(h, 22);
-  bmp.writeUInt16LE(1, 26);
-  bmp.writeUInt16LE(24, 28);
-  bmp.writeUInt32LE(row * h, 34);
+  // PNG rows are top-down RGB, each prefixed with filter byte 0 (none)
+  const row = 1 + w * 3;
+  const raw = Buffer.alloc(row * h);
   for (let y = 0; y < h; y++) {
-    const srcRow = topDown ? h - 1 - y : y;          // bmp row 0 = bottom
+    const srcRow = topDown ? y : h - 1 - y;          // tga row 0 = bottom
     for (let x = 0; x < w; x++) {
       const i = (srcRow * w + x) * pp;
-      const o = 54 + y * row + x * 3;
-      bmp[o] = pixels[i] ?? 0; bmp[o + 1] = pixels[i + 1] ?? 0; bmp[o + 2] = pixels[i + 2] ?? 0;
+      const o = y * row + 1 + x * 3;
+      raw[o] = pixels[i + 2] ?? 0; raw[o + 1] = pixels[i + 1] ?? 0; raw[o + 2] = pixels[i] ?? 0;
     }
   }
-  return bmp;
+  const chunk = (type, data) => {
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    out.write(type, 4, "latin1");
+    data.copy(out, 8);
+    out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8; ihdr[9] = 2;                          // 8-bit truecolour RGB
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(raw, { level: 9 })),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+// Converted levelshots, keyed by pk3 path + size + mtime + entry offset so a
+// replaced pk3 is picked up; bounded (gallery thumbnails are ~50-150 KB).
+const shotCache = new Map();
+const SHOT_CACHE_MAX = 256;
+
+function levelshot(shot) {
+  const st = statSync(shot.path);
+  const key = `${shot.path}:${st.size}:${st.mtimeMs}:${shot.entry.lho}`;
+  let hit = shotCache.get(key);
+  if (!hit) {
+    let body = readZipEntry(shot.path, shot.entry);
+    let type = "image/jpeg";
+    if (shot.type === "tga") { body = tgaToPng(body); type = "image/png"; }
+    hit = { body, type, etag: `"${crc32(body).toString(16)}-${body.length.toString(16)}"` };
+    if (shotCache.size >= SHOT_CACHE_MAX) shotCache.delete(shotCache.keys().next().value);
+    shotCache.set(key, hit);
+  }
+  return hit;
 }
 
 // Read one zip archive's central directory: name, method, sizes and local
@@ -573,20 +602,20 @@ async function handleAdmin(request, response) {
     return true;
   }
   // GET /levelshot/<map>: the map's screenshot straight out of its pk3
-  // (jpg as-is, tga converted to bmp).
+  // (jpg as-is, tga converted to png), cached in memory with an ETag.
   const shotPath = /^\/levelshot\/([\w.-]{1,64})$/.exec(url.pathname);
   if (shotPath && request.method === "GET") {
     const shot = listAvailableMaps().shots.get(shotPath[1].toLowerCase());
     if (!shot) return respond(response, 404, { error: "no levelshot" }), true;
     try {
-      let body = readZipEntry(shot.path, shot.entry);
-      let type = "image/jpeg";
-      if (shot.type === "tga") { body = tgaToBmp(body); type = "image/bmp"; }
-      response.writeHead(200, {
-        "content-type": type,
-        "content-length": body.length,
-        "cache-control": "public, max-age=3600",
-      });
+      const { body, type, etag } = levelshot(shot);
+      const headers = { etag, "cache-control": "public, max-age=86400" };
+      if (request.headers["if-none-match"] === etag) {
+        response.writeHead(304, headers);
+        response.end();
+        return true;
+      }
+      response.writeHead(200, { ...headers, "content-type": type, "content-length": body.length });
       response.end(body);
     } catch (error) {
       respond(response, 500, { error: `levelshot: ${error && error.message || error}` });
