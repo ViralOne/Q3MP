@@ -516,7 +516,17 @@ Rate limit for a particular address
 ================
 */
 qboolean SVC_RateLimitAddress( netadr_t from, int burst, int period ) {
-	leakyBucket_t *bucket = SVC_BucketForAddress( from, burst, period );
+	leakyBucket_t *bucket;
+
+	// q3js: loopback is the WebSocket gateway in the same container, which
+	// carries every browser player plus the admin panel's status and rcon
+	// queries — one shared 10-request bucket starved them all. The global
+	// outbound and bad-rcon buckets still apply.
+	if ( from.type == NA_LOOPBACK || ( from.type == NA_IP && from.ip[0] == 127 ) ) {
+		return qfalse;
+	}
+
+	bucket = SVC_BucketForAddress( from, burst, period );
 
 	return SVC_RateLimit( bucket, burst, period );
 }
