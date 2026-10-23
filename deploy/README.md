@@ -245,6 +245,7 @@ The admin panel's *Mutators* card stacks extra rules on top of any mode:
 | **Vampire** | `g_vampire 0.5` | half the health you take from enemies heals you (up to 200) |
 | **Grappling hook** | `g_grapple 1` | everyone carries the hook — mouse wheel, or `weapon 10` in the console |
 | **Quad for all** | `g_quadAll 1` | permanent quad damage for everyone |
+| **Double jump** | `g_doubleJump 1` | press jump again while airborne for one extra jump per flight |
 
 ## Rules editor
 
@@ -260,8 +261,8 @@ and weapon mode only take effect after a map restart, which the card shows
 
 The choice is saved in `PRESETS_FILE`, laid over every preset, and put back
 by the gateway after a server restart (it compares the serverinfo after each
-map load and once a minute). Gravity, rocket jumps and vampire apply at once;
-the hook and quad go to everyone alive right away and on every spawn. A mode's
+map load and once a minute). Gravity, rocket jumps, vampire and double jump
+apply at once; the hook and quad go to everyone alive right away and on every spawn. A mode's
 own rule (Excessive's free rocket jumps) shows as "from mode". The start page
 lists active mutators next to the mode, e.g. *Free for all + vampire*.
 

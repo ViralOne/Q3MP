@@ -27,7 +27,7 @@ const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
 
 // Settings every preset writes unless it says otherwise, so switching away
 // from a mode never leaves its physics (or a mutator) behind.
-const BASE_CVARS = { g_gravityOverride: 0, g_selfDamage: 1, g_vampire: 0, g_grapple: 0, g_quadAll: 0 };
+const BASE_CVARS = { g_gravityOverride: 0, g_selfDamage: 1, g_vampire: 0, g_grapple: 0, g_quadAll: 0, g_doubleJump: 0 };
 
 // Mutators (admin panel): extra rules stacked on top of whatever mode runs.
 // Each is a set of fork qagame cvars; the admin's choice is saved and laid
@@ -43,6 +43,8 @@ export const MUTATORS = [
     cvars: { g_grapple: 1 } },
   { id: "quad", name: "Quad for all", description: "permanent quad damage for everyone",
     cvars: { g_quadAll: 1 } },
+  { id: "djump", name: "Double jump", description: "press jump again in mid-air for one extra jump",
+    cvars: { g_doubleJump: 1 } },
 ];
 
 export const PRESETS = [

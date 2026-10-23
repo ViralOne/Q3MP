@@ -608,6 +608,24 @@ static void PM_AirMove( void ) {
 
 	PM_Friction();
 
+	// double-jump mutator: a fresh jump press (released and held again) while
+	// airborne jumps once more; PMF_AIR_JUMPED allows one per flight and is
+	// cleared on landing in PmoveSingle
+	if ( pm->doubleJump && !( pm->ps->pm_flags & ( PMF_AIR_JUMPED | PMF_JUMP_HELD | PMF_RESPAWNED ) )
+		&& pm->cmd.upmove >= 10 ) {
+		pm->ps->pm_flags |= PMF_JUMP_HELD | PMF_AIR_JUMPED;
+		pm->ps->groundEntityNum = ENTITYNUM_NONE;
+		pm->ps->velocity[2] = JUMP_VELOCITY;
+		PM_AddEvent( EV_JUMP );
+		if ( pm->cmd.forwardmove >= 0 ) {
+			PM_ForceLegsAnim( LEGS_JUMP );
+			pm->ps->pm_flags &= ~PMF_BACKWARDS_JUMP;
+		} else {
+			PM_ForceLegsAnim( LEGS_JUMPB );
+			pm->ps->pm_flags |= PMF_BACKWARDS_JUMP;
+		}
+	}
+
 	fmove = pm->cmd.forwardmove;
 	smove = pm->cmd.rightmove;
 
@@ -1960,6 +1978,11 @@ void PmoveSingle (pmove_t *pmove) {
 
 	// set groundentity
 	PM_GroundTrace();
+
+	// landing gives the double-jump mutator a fresh air jump
+	if ( pml.walking ) {
+		pm->ps->pm_flags &= ~PMF_AIR_JUMPED;
+	}
 
 	if ( pm->ps->pm_type == PM_DEAD ) {
 		PM_DeadMove ();

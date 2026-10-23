@@ -775,6 +775,7 @@ extern	vmCvar_t	g_gravityOverride;	// >0: g_gravity on every map load, instead o
 extern	vmCvar_t	g_vampire;			// share of damage dealt that heals the attacker (0 = off)
 extern	vmCvar_t	g_grapple;			// everyone carries the grappling hook
 extern	vmCvar_t	g_quadAll;			// everyone has quad damage, always
+extern	vmCvar_t	g_doubleJump;		// 1: jump one extra time in mid-air
 #define VAMPIRE_MAX_HEALTH	200
 void G_MutatorsFrame( void );
 

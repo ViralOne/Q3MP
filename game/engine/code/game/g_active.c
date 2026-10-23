@@ -948,6 +948,7 @@ void ClientThink_real( gentity_t *ent ) {
 
 	pm.pmove_fixed = pmove_fixed.integer | client->pers.pmoveFixed;
 	pm.pmove_msec = pmove_msec.integer;
+	pm.doubleJump = ( g_doubleJump.integer > 0 ) ? qtrue : qfalse;	// mutator
 
 	VectorCopy( client->ps.origin, client->oldOrigin );
 

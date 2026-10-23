@@ -1016,6 +1016,7 @@ typedef struct {
 	int				capturelimit;
 	int				timelimit;
 	int				maxclients;
+	int				doubleJump;		// parsed from serverinfo: double-jump mutator
 	char			mapname[MAX_QPATH];
 	char			redTeam[MAX_QPATH];
 	char			blueTeam[MAX_QPATH];
