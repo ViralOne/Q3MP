@@ -10,6 +10,10 @@
 	@pages path / /index.html /admin.html
 	header @pages Cache-Control "no-cache"
 
+	# vendored fonts change rarely; an hour of freshness is plenty
+	@fonts path /fonts/*
+	header @fonts Cache-Control "max-age=3600"
+
 	# the engine bundle changes whenever the wasm is rebuilt; revalidate
 	@engine path /ioquake3.js /ioquake3.wasm
 	header @engine Cache-Control "no-cache"

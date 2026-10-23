@@ -5,117 +5,240 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quake III Arena — Web</title>
 <style>
-  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#000;
-    font-family: "SF Mono", Menlo, Consolas, monospace; color:#ddd; }
+
+  /* ---- shared language: Rajdhani display, warm steel, orange accent ---- */
+  @font-face { font-family:'Rajdhani';
+    src:url(/fonts/rajdhani-500.woff2) format('woff2'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'Rajdhani';
+    src:url(/fonts/rajdhani-600.woff2) format('woff2'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'Rajdhani';
+    src:url(/fonts/rajdhani-700.woff2) format('woff2'); font-weight:700; font-display:swap; }
+  :root {
+    --bg: #0b0a08;
+    --panel: linear-gradient(180deg, #1a1712, #131109);
+    --panel-2: linear-gradient(180deg, #211c14, #16130e);
+    --edge: #353026;
+    --edge-hi: #4a4436;
+    --ink: #ded7ca;
+    --muted: #9a927f;
+    --faint: #6b6355;
+    --acc: #e0502f;        /* Quake orange */
+    --acc-dim: #93392a;
+    --amber: #e0b050;      /* code + values */
+    --term: #8fbf7f;       /* engine log green */
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:var(--bg);
+    color:var(--ink); font-family:ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; }
   canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:none; }
+  :focus-visible { outline:1px solid var(--acc); outline-offset:2px; }
+
   .panel { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
-    justify-content:center; gap:16px; background:#000; z-index:5; }
-  .panel h1 { font-size:26px; font-weight:700; letter-spacing:2px; color:#d94a36; margin:0;
-    text-transform:uppercase; }
-  /* the start page can outgrow short screens now: scroll instead of clipping */
-  #login { overflow-y:auto; justify-content:safe center; padding:24px 0; box-sizing:border-box; }
-  #login .field { display:flex; gap:8px; }
-  #login #serverField { width: min(360px, 82vw); }
-  #login input { background:#141414; border:1px solid #444; color:#eee; font:inherit;
-    padding:10px 14px; width:min(260px, 60vw); border-radius:3px; outline-color:#d94a36; }
-  #login select { background:#141414; border:1px solid #444; color:#eee; font:inherit;
-    padding:10px 12px; min-width:0; flex:1; border-radius:3px; }
-  #login select:disabled { opacity:.5; }
-  #login .previewRow { display:flex; align-items:center; gap:10px; margin-top:10px; }
-  #modelPreview { position:static; width:64px; height:64px; flex:0 0 64px; image-rendering:pixelated;
-    background:#0d0d0d; border:1px solid #333; border-radius:3px; display:none; }
+    justify-content:center; gap:20px; z-index:5;
+    background:radial-gradient(1100px 720px at 50% 14%, #191509 0%, #0b0a08 62%); }
+  /* the start page can outgrow short screens: scroll instead of clipping */
+  #login { overflow-y:auto; justify-content:flex-start; padding:32px 16px;
+    scrollbar-width:thin; scrollbar-color:#3a352c transparent; }
+  #login::-webkit-scrollbar { width:10px; }
+  #login::-webkit-scrollbar-thumb { background:#3a352c; border:3px solid var(--bg); }
+  /* margin:auto centers the content while it fits, keeps it scrollable when not */
+  .loginwrap { margin:auto; display:flex; flex-direction:column; align-items:center; gap:20px; }
+
+  /* ---- hero lockup ------------------------------------------------------ */
+  .hero { text-align:center; user-select:none; }
+  .hero .kicker { font:500 10px/1 var(--f-disp, Rajdhani, system-ui, sans-serif);
+    letter-spacing:.42em; text-transform:uppercase; color:var(--faint); margin-bottom:10px;
+    display:flex; align-items:center; gap:12px; justify-content:center; }
+  .hero .kicker::before, .hero .kicker::after { content:''; width:46px; height:1px;
+    background:linear-gradient(90deg, transparent, var(--acc-dim)); }
+  .hero .kicker::after { background:linear-gradient(90deg, var(--acc-dim), transparent); }
+  .hero h1 { margin:0; font:700 clamp(40px, 7vw, 58px)/0.95 'Rajdhani', system-ui, sans-serif;
+    letter-spacing:.06em; text-transform:uppercase; color:#efe8da; }
+  .hero h1 .tn { color:var(--acc); margin-left:.18em; }
+  .hero .arena { font:600 clamp(15px,2.2vw,19px)/1 'Rajdhani', system-ui, sans-serif; color:var(--muted);
+    letter-spacing:.74em; text-indent:.74em; text-transform:uppercase; margin-top:2px;
+    display:flex; align-items:center; justify-content:center; gap:14px; }
+  .hero .arena::before, .hero .arena::after { content:''; flex:0 0 60px; height:2px;
+    background:linear-gradient(90deg, transparent, var(--acc) 60%, transparent); }
+  .hero .arena::after { transform:scaleX(-1); }
+
+  /* ---- boot card -------------------------------------------------------- */
+  .bootcard { width:min(680px, 94vw); background:var(--panel); border:1px solid var(--edge);
+    border-top:2px solid #57503f; padding:20px 22px 18px; position:relative;
+    box-shadow:0 18px 50px rgba(0,0,0,.5); }
+  .bootcard::before { content:''; position:absolute; top:-2px; left:0; width:34px; height:2px; background:var(--acc); }
+  .brow { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:14px; align-items:center;
+    padding:9px 0; }
+  .brow + .brow { border-top:1px solid #221e17; }
+  .blab { font:600 11px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.28em;
+    text-transform:uppercase; color:var(--faint); }
+  .bwrap { display:flex; flex-direction:column; gap:7px; min-width:0; }
+  /* name row: input, character preview and character select share one line */
+  .idrow { flex-direction:row; flex-wrap:wrap; align-items:center; }
+  .idrow input { flex:1 1 160px; }
+  #modelPreview { position:relative; inset:auto; width:34px; height:34px; flex:0 0 34px;
+    image-rendering:pixelated; background:#0d0b08; border:1px solid var(--edge);
+    border-radius:0; display:none; object-fit:contain; margin:1px 0; }
   #modelPreview.has { display:block; }
-  #login button { background:#d94a36; border:0; color:#fff; font:inherit; padding:10px 22px;
-    cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
-  #login button:disabled { background:#552; color:#996; cursor:default; }
-  #login .hint { font-size:12px; color:#8a8a8a; max-width:92vw; text-align:center; }
-  #login .field { max-width:92vw; }
-  #login input { min-width:0; }
-  #login a { color:#a9a; }
-  /* map gallery: this server's maps with their levelshots */
-  #gallery { width:min(760px, 92vw); margin-top:6px; }
+  .bootcard select { background:#0d0b08; border:1px solid var(--edge); color:var(--ink);
+    font:500 15px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.05em; padding:9px 12px;
+    flex:1; min-width:0; border-radius:0; }
+  .idrow select { flex:0 0 140px; width:140px; }
+  .bootcard input { background:#0d0b08; border:1px solid var(--edge); color:var(--ink);
+    font:500 15px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.05em;
+    padding:9px 12px; min-width:0; width:100%; border-radius:0; outline-color:var(--acc); }
+  .bootcard input:focus, .bootcard select:focus { border-color:var(--acc); outline:none; }
+  .bootcard select:disabled { opacity:.5; }
+  .bhint { font:400 12px/1.4 var(--f-ui, ui-sans-serif, system-ui, sans-serif); color:var(--faint); }
+
+  .bootcard button { width:100%; margin-top:14px;
+    font:700 16px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.42em; text-indent:.42em;
+    text-transform:uppercase; color:#fff; background:linear-gradient(180deg, #e5542f, #bf3a22);
+    border:0; border-bottom:2px solid #7d2417; padding:13px 0 11px; cursor:pointer;
+    transition:filter .15s ease-out; }
+  .bootcard button:hover:not(:disabled) { filter:brightness(1.13); }
+  .bootcard button:disabled { background:#2a2620; color:#5d574a; border-bottom-color:#1d1b16; cursor:default; }
+
+  .footlinks { margin-top:12px; text-align:center; font:400 11.5px/1.5 var(--f-ui, ui-sans-serif, system-ui, sans-serif);
+    color:var(--faint); }
+  .footlinks a { color:var(--muted); text-decoration:none; border-bottom:1px dotted #454035; }
+  .footlinks a:hover { color:var(--acc); border-color:var(--acc); }
+
+  /* ---- map gallery ------------------------------------------------------ */
+  #gallery { width:min(680px, 94vw); }
   #gallery[hidden] { display:none; }
-  #galleryTitle { margin-bottom:6px; text-align:center; }
+  .subhead { font:600 11px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.3em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:4px;
+    display:flex; align-items:center; gap:10px; }
+  .subhead::before { content:''; width:7px; height:7px; background:var(--acc); flex:0 0 7px; }
+  .subhead small { text-transform:none; letter-spacing:.02em; font-weight:500; color:var(--faint); }
+  #galleryAll { margin-left:auto; background:none; border:1px solid var(--edge);
+    color:var(--muted); font:600 10px/1 'Rajdhani', system-ui, sans-serif;
+    letter-spacing:.16em; text-transform:uppercase; padding:4px 10px; cursor:pointer;
+    border-radius:0; }
+  #galleryAll:hover { color:var(--ink); border-color:var(--acc-dim); }
+  #galleryAll[hidden] { display:none; }
+  .submeta { font:400 11.5px/1.5 var(--f-ui); color:var(--faint); margin:0 0 12px 17px; }
+  .submeta .mapname { font:600 11.5px/1 var(--f-mono); color:var(--amber); }
+  .submeta b { color:var(--ink); font-weight:500; }
   #galleryStrip { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 10px;
-    scroll-snap-type:x proximity; scrollbar-color:#444 transparent; }
-  .mapCard { flex:0 0 120px; background:#0d0d0d; border:1px solid #333; border-radius:3px;
-    overflow:hidden; scroll-snap-align:start; }
-  .mapCard img, .mapCard .noshot { width:120px; height:90px; object-fit:cover; display:block;
-    background:#181818; }
-  .mapCard .noshot { display:flex; align-items:center; justify-content:center; color:#777;
+    scrollbar-width:thin; scrollbar-color:#3a352c transparent; }
+  #galleryStrip::-webkit-scrollbar { height:9px; }
+  #galleryStrip::-webkit-scrollbar-thumb { background:#3a352c; border:2px solid #0b0a08;
+    border-radius:5px; }
+  #galleryStrip::-webkit-scrollbar-track { background:transparent; }
+  .mapCard { flex:0 0 120px; background:#100e0a; border:1px solid var(--edge); overflow:hidden;
+    scroll-snap-align:start; transition:border-color .15s ease-out; }
+  .mapCard:hover { border-color:var(--edge-hi); }
+  .mapCard img, .mapCard .noshot { width:120px; height:90px; object-fit:cover; display:block; background:#16130e; }
+  .mapCard .noshot { display:flex; align-items:center; justify-content:center; color:var(--faint);
     font-size:11px; }
-  .mapCard span { display:block; font-size:12px; color:#ccc; padding:5px 7px; white-space:nowrap;
+  .mapCard span { display:block; font:500 12px/1.3 'Rajdhani', system-ui, sans-serif;
+    letter-spacing:.05em; color:var(--ink); padding:5px 7px; white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; }
-  .mapCard.now { border-color:#d94a36; }
-  /* chat commands help: modes players can vote, plus the other chat keys */
-  #help { width:min(760px, 92vw); background:#0b0b0b; border:1px solid #2a2a2a; border-radius:4px;
-    padding:12px 14px; box-sizing:border-box; }
+  .mapCard.now { border-color:var(--acc); }
+  .mapCard.now span::before { content:'\25B6  '; color:var(--acc); }
+  .mapCard .nobots { font-size:10px; color:var(--amber); padding:0 7px 5px; }
+
+  /* ---- chat commands card ------------------------------------------------ */
+  #help { width:min(680px, 94vw); background:var(--panel); border:1px solid var(--edge);
+    border-top:2px solid #57503f; padding:14px 18px 16px; }
+  #help::before { content:''; }
   #help[hidden] { display:none; }
-  #help h2 { font-size:12px; font-weight:700; color:#d94a36; letter-spacing:1px; text-transform:uppercase;
-    margin:0 0 4px; }
-  #help .lead { font-size:12px; color:#9a9a9a; margin:0 0 10px; }
-  #helpModes { display:grid; grid-template-columns:repeat(auto-fill, minmax(168px, 1fr)); gap:6px; margin-bottom:12px; }
-  /* #login button styles the PLAY button; mode chips are quieter */
-  #login .mode { background:#111; border:1px solid #333; border-radius:3px; padding:7px 9px; text-align:left;
-    font:inherit; color:#ccc; cursor:pointer; display:flex; flex-direction:column; gap:2px;
-    text-transform:none; letter-spacing:0; }
-  #login .mode:hover { border-color:#777; }
-  #login .mode.now { border-color:#d94a36; }
-  .mode b { font-size:13px; color:#eee; }
-  .mode.now b::after { content:'  \25CF now'; color:#d94a36; font-size:11px; font-weight:400; }
-  .mode code { font-size:12px; color:#e0b050; }
-  .mode small { font-size:11px; color:#8a8a8a; line-height:1.35; }
-  #helpCmds { display:grid; grid-template-columns:max-content 1fr; gap:5px 14px; font-size:12px; color:#aaa; }
-  #helpCmds code { color:#e0b050; white-space:nowrap; }
-  .mapCard .nobots { font-size:10px; color:#d9a036; padding:0 7px 5px; }
-  .mapCard.now span::before { content:'\25B6  '; color:#d94a36; }
-  #bar { width:min(420px, 70vw); height:8px; background:#222; border:1px solid #333; display:none; }
-  #bar i { display:block; height:100%; width:0%; background:#d94a36; transition:width .15s; }
-  #status { font-size:12px; color:#999; min-height:18px; }
+  #help h2 { font:700 13px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.28em;
+    text-transform:uppercase; color:var(--ink); margin:0 0 4px;
+    display:flex; align-items:center; gap:9px; }
+  #help h2::before { content:''; width:7px; height:7px; background:var(--acc); }
+  #help .lead { font:400 12px/1.5 var(--f-ui, ui-sans-serif, system-ui, sans-serif);
+    color:var(--muted); margin:0 0 12px; }
+  #helpModes { display:grid; grid-template-columns:repeat(auto-fill, minmax(172px, 1fr)); gap:6px; margin-bottom:14px; }
+  #login .mode { background:#12100b; border:1px solid #2c2820; border-radius:0; padding:8px 10px;
+    text-align:left; font-family:inherit; color:var(--ink); cursor:pointer;
+    display:flex; flex-direction:column; gap:2px; text-transform:none; letter-spacing:0;
+    transition:border-color .15s ease-out; }
+  #login .mode:hover { border-color:var(--acc); background:#1a1509; color:var(--ink); }
+  #login .mode.now { border-color:var(--acc); }
+  .mode b { font:600 13px/1.2 'Rajdhani', system-ui, sans-serif; letter-spacing:.06em;
+    color:#efe8da; }
+  .mode.now b::after { content:'  \25CF now'; color:var(--acc); font-size:10px; font-weight:600; }
+  .mode code { font:500 12px/1 var(--f-mono, ui-monospace, Menlo, monospace); color:var(--amber); }
+  .mode small { font:400 11px/1.35 var(--f-ui, ui-sans-serif, system-ui, sans-serif);
+    color:var(--faint); }
+  #helpCmds { display:grid; grid-template-columns:max-content 1fr; gap:6px 16px;
+    font:400 12px/1.45 var(--f-ui, ui-sans-serif, system-ui, sans-serif); color:var(--muted); }
+  #helpCmds code { font:500 12px/1 var(--f-mono, ui-monospace, Menlo, monospace); color:var(--amber); white-space:nowrap; }
+
+  /* ---- boot / status panel ---------------------------------------------- */
+  #bar { width:min(420px, 70vw); height:6px; background:#181510; border:1px solid var(--edge); display:none; }
+  #bar i { display:block; height:100%; width:0%; background:linear-gradient(90deg, var(--acc-dim), var(--acc));
+    transition:width .15s ease-out; }
+  #status { font:500 13px/1.5 'Rajdhani', system-ui, sans-serif; letter-spacing:.08em;
+    color:var(--muted); min-height:18px; }
+  #error { color:var(--acc); font:400 12px/1.5 var(--f-mono, ui-monospace, Menlo, monospace);
+    white-space:pre-wrap; max-width:80vw; text-align:center; }
+
+  /* ---- in-game overlays -------------------------------------------------- */
   #log { position:absolute; left:8px; bottom:8px; right:8px; max-height:40vh; overflow:auto;
-    font-size:11px; line-height:1.5; color:#7c6; background:rgba(0,0,0,.82); border:1px solid #244;
-    padding:8px 10px; z-index:9; white-space:pre-wrap; display:none; }
+    font:400 11px/1.55 var(--f-mono, ui-monospace, Menlo, monospace); color:var(--term);
+    background:rgba(8,7,5,.85); border:1px solid #26221a; padding:8px 10px; z-index:9;
+    white-space:pre-wrap; display:none; }
   #log.show { display:block; }
-  #playbar { position:absolute; right:8px; bottom:8px; display:none; gap:6px; z-index:10; }
+  #playbar { position:absolute; right:10px; bottom:10px; display:none; gap:6px; z-index:10; }
   #playbar.show { display:flex; }
-  #playbar button { background:rgba(20,20,20,.85); border:1px solid #444; color:#bbb;
-    font:inherit; font-size:11px; padding:5px 10px; border-radius:3px; cursor:pointer; }
-  #playbar button:hover { border-color:#d94a36; color:#fff; }
-#resume { position:absolute; left:50%; transform:translateX(-50%); bottom:56px;
-  background:rgba(20,20,20,.85); border:1px solid #d94a36; border-radius:16px;
-  color:#eee; font-size:12px; padding:6px 14px; cursor:pointer; user-select:none;
-  z-index:20; display:none; }
-#resume.on { display:block; }
-#resume:hover { color:#fff; border-color:#fff; }
+  #playbar button { background:rgba(14,12,9,.88); border:1px solid #3d372c; color:var(--muted);
+    font:600 11px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.14em; text-transform:uppercase;
+    padding:6px 11px; cursor:pointer; transition:border-color .12s ease-out, color .12s ease-out; }
+  #playbar button:hover { border-color:var(--acc); color:#fff; }
+  #resume { position:absolute; left:50%; transform:translateX(-50%); bottom:56px;
+    background:rgba(16,13,10,.9); border:1px solid var(--acc); border-bottom-width:3px;
+    color:var(--ink); font:600 12px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.16em;
+    text-transform:uppercase; padding:9px 18px; cursor:pointer; user-select:none;
+    z-index:20; display:none; }
+  #resume.on { display:block; }
+  #resume:hover { color:#fff; filter:brightness(1.15); }
   #joinfail { position:fixed; top:16px; left:50%; transform:translateX(-50%);
-    display:flex; gap:14px; align-items:center; z-index:6; background:#141414ee;
-    border:1px solid #d94a36; color:#eee; font:inherit; font-size:12px;
-    padding:10px 16px; border-radius:3px; }
-  #joinfail button { background:none; border:1px solid #666; color:#aaa;
-    font:inherit; font-size:11px; padding:4px 10px; border-radius:3px; cursor:pointer; }
-  #joinfail button:hover { border-color:#d94a36; color:#fff; }
-  #error { color:#d94a36; font-size:12px; white-space:pre-wrap; max-width:80vw; text-align:center; }
+    display:flex; gap:16px; align-items:center; z-index:6; background:rgba(16,13,10,.96);
+    border:1px solid var(--acc); border-left-width:3px; color:var(--ink);
+    font:400 12.5px/1.4 var(--f-ui, ui-sans-serif, system-ui, sans-serif);
+    padding:11px 16px; }
+  #joinfail button { background:none; border:1px solid #4a4436; color:var(--muted);
+    font:600 11px/1 'Rajdhani', system-ui, sans-serif; letter-spacing:.14em; text-transform:uppercase;
+    padding:5px 12px; cursor:pointer; }
+  #joinfail button:hover { border-color:var(--acc); color:#fff; }
 </style>
 </head>
 <body>
 <canvas id="canvas"></canvas>
 <div class="panel" id="login">
-  <h1>Quake III Arena</h1>
-  <div class="field">
-    <input id="name" maxlength="16" placeholder="Player name" autocomplete="off" spellcheck="false">
+ <div class="loginwrap">
+  <header class="hero">
+    <div class="kicker">self-hosted &middot; browser client</div>
+    <h1>Quake <span class="tn">III</span></h1>
+    <div class="arena">Arena</div>
+  </header>
+  <div class="bootcard">
+    <div class="brow">
+      <span class="blab">Name</span>
+      <div class="bwrap idrow">
+        <input id="name" maxlength="16" placeholder="player name" autocomplete="off" spellcheck="false">
+        <canvas id="modelPreview" width="64" height="64" title="character preview"></canvas>
+        <select id="model" title="Character" aria-label="Character"></select>
+      </div>
+    </div>
+    <div class="brow">
+      <span class="blab">Server</span>
+      <div class="bwrap" id="serverField">
+        <select id="server" title="Game server to join"></select>
+        <div class="bhint" id="serverHint">loading server list…</div>
+      </div>
+    </div>
     <button id="playBtn">Play</button>
+    <div class="footlinks">name is remembered &middot; pk3 downloads are cached <a id="clearCache" href="#">(clear)</a> &middot; <a href="stats.html">leaderboard</a> &middot; <a href="admin.html">server admin</a></div>
   </div>
-  <div class="previewRow">
-    <canvas id="modelPreview" width="64" height="64" title="character preview"></canvas>
-    <select id="model" title="Character"></select>
-  </div>
-  <div class="field" id="serverField">
-    <select id="server" title="Game server to join"></select>
-  </div>
-  <div class="hint" id="serverHint">loading server list…</div>
-  <div class="hint">name is remembered · pk3 downloads are cached <a id="clearCache" href="#">(clear)</a> · <a href="stats.html">leaderboard</a> · <a href="admin.html">server admin</a></div>
   <div id="gallery" hidden>
-    <div class="hint" id="galleryTitle">maps on this server</div>
+    <div class="subhead"><span id="galleryTitle">maps on this server</span>
+      <button id="galleryAll" type="button" hidden>show all maps</button></div>
+    <div class="submeta" id="galleryMeta"></div>
     <div id="galleryStrip"></div>
   </div>
   <div id="help" hidden>
@@ -130,6 +253,7 @@
       <span><code>~</code> · <code>F1</code> · <code>ESC</code></span><span>game console · browser log · game menu</span>
     </div>
   </div>
+ </div>
 </div>
 <div class="panel" id="bootNew" style="display:none">
   <div id="bar"><i></i></div>
@@ -795,7 +919,7 @@ async function refreshServers() {
       serverSelect.replaceChildren(localOption(), ...entries.map((e) => serverOption(e.s, haveMap, e.extra)));
     const entries = listed.map((s) => ({ s, extra: null }));
     render(entries);
-    serverHint.textContent = 'pick a server — grayed ones need extra pk3s this site does not host';
+    serverHint.textContent = 'grayed servers need extra pk3s this site does not host';
     // second pass: entries whose mod/world info only shows in the live status
     await Promise.all(entries.map(async (e) => {
       if (e.s.info && flagOn(e.s.info.g_needpass)) return;  // already settled
@@ -803,7 +927,7 @@ async function refreshServers() {
       if (probed) e.extra = probed;
     }));
     render(entries);
-    serverHint.textContent = 'pick a server — grayed ones need extra pk3s this site does not host';
+    serverHint.textContent = 'grayed servers need extra pk3s this site does not host';
   } catch (e) {
     serverHint.textContent = `server list unavailable (${e && e.message || e}) — joining this server`;
   }
@@ -923,14 +1047,40 @@ async function loadGallery() {
     const now = current && current.mapname;
     const sorted = [...maps].sort((a, b) =>
       (Number(b.name === now) - Number(a.name === now)) || a.name.localeCompare(b.name));
-    galleryStrip.replaceChildren(...sorted.map((m) => mapCard(m, m.name === now)));
+
+    // short title + one calm meta line instead of a long single string
+    const mode = current && current.mode ? current.mode.name
+      : (current ? gametypeName(current.gametype) : '');
     const muts = current && Array.isArray(current.mutators) && current.mutators.length
-      ? ' + ' + current.mutators.map((m) => m.name.toLowerCase()).join(', ') : '';
-    const mode = (current && current.mode ? current.mode.name : (current ? gametypeName(current.gametype) : '')) + muts;
-    galleryTitle.textContent = now
-      ? `now: ${mode} on ${now} · ${current.players}/${current.maxclients} players` +
-        (current.chatVote ? ' · type !modes in game to vote a mode' : '') + ` · ${maps.length} maps`
-      : `${maps.length} maps on this server`;
+      ? current.mutators.map((m) => m.name.toLowerCase()) : [];
+    galleryTitle.textContent = now ? `now: ${mode}` : `${maps.length} maps on this server`;
+    const metaBits = [];
+    if (muts.length) metaBits.push(['span', {}, muts.join(' + ')]);
+    if (now) metaBits.push(['span', { class: 'mapname' }, `map ${now}`]);
+    if (current && typeof current.players === 'number') {
+      metaBits.push(['span', {}, `${current.players}/${current.maxclients} players`]);
+    }
+    metaBits.push(['span', {}, `${maps.length} maps`]);
+    if (current && current.chatVote) metaBits.push(['span', {}, 'vote modes with !modes in chat']);
+    const meta = document.getElementById('galleryMeta');
+    meta.replaceChildren(...metaBits.flatMap(([t, attrs, text], i) => {
+      const el = document.createElement(t);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      el.textContent = text;
+      return i ? [document.createTextNode(' · '), el] : [el];
+    }));
+
+    // only the map being played by default; the whole list is one click away
+    let showAll = false;
+    const renderStrip = () => {
+      const shown = showAll || !now ? sorted : sorted.filter((m) => m.name === now);
+      galleryStrip.replaceChildren(...shown.map((m) => mapCard(m, m.name === now)));
+      allBtn.hidden = sorted.length < 2;
+      allBtn.textContent = showAll ? 'show only the current map' : `show all ${maps.length} maps`;
+    };
+    const allBtn = document.getElementById('galleryAll');
+    allBtn.addEventListener('click', () => { showAll = !showAll; renderStrip(); });
+    renderStrip();
     galleryReady = true;
     showGallery();
   } catch (e) {

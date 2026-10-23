@@ -5,102 +5,274 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quake III Arena — Server Admin</title>
 <style>
-  html, body { margin:0; padding:24px; width:calc(100% - 48px); background:#000; color:#ddd;
-    font-family:"SF Mono", Menlo, Consolas, monospace; }
-  h1 { font-size:22px; font-weight:700; letter-spacing:2px; color:#d94a36; text-transform:uppercase; margin:0 0 4px; }
-  #sub { color:#666; font-size:12px; margin-bottom:20px; }
-  #sub a { color:#878; }
-  .card { background:#111; border:1px solid #333; border-radius:4px; padding:14px 16px; margin-bottom:16px; max-width:860px; }
-  .card h2 { font-size:13px; color:#d94a36; margin:0 0 10px; text-transform:uppercase; letter-spacing:1px; }
+
+  /* ---- shared language: vendored Rajdhani, warm steel, Quake orange ---- */
+  @font-face { font-family:'Rajdhani';
+    src:url(/fonts/rajdhani-500.woff2) format('woff2'); font-weight:500; font-display:swap; }
+  @font-face { font-family:'Rajdhani';
+    src:url(/fonts/rajdhani-600.woff2) format('woff2'); font-weight:600; font-display:swap; }
+  @font-face { font-family:'Rajdhani';
+    src:url(/fonts/rajdhani-700.woff2) format('woff2'); font-weight:700; font-display:swap; }
+  :root {
+    --bg: #0b0a08;
+    --panel: linear-gradient(180deg, #1a1712, #131109);
+    --edge: #353026;
+    --edge-hi: #4a4436;
+    --ink: #ded7ca;
+    --muted: #9a927f;
+    --faint: #6b6355;
+    --acc: #e0502f;        /* Quake orange */
+    --acc-dim: #93392a;
+    --amber: #e0b050;      /* latched / armed / code */
+    --term: #8fbf7f;       /* console output green */
+    --f-disp: 'Rajdhani', system-ui, sans-serif;
+    --f-ui: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --f-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    color-scheme: dark;    /* native widgets (file pickers, spinners) go dark */
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; color:var(--ink); font:400 13px/1.55 var(--f-ui);
+    background:#0b0a08 radial-gradient(1200px 800px at 34% -10%, #191408 0%, #0b0a08 58%) fixed;
+    display:grid; grid-template-columns:210px minmax(0, 1fr); gap:0 32px;
+    max-width:1150px; margin:0 auto; padding:28px 22px 90px; align-items:start;
+  }
+  :focus-visible { outline:1px solid var(--acc); outline-offset:2px; }
+  a { color:var(--muted); }
+
+  /* ---- top header spans both columns ------------------------------------ */
+  .top { grid-column:1 / -1; display:flex; justify-content:space-between; align-items:flex-end;
+    gap:16px; border-bottom:1px solid var(--edge); padding-bottom:14px; margin-bottom:24px; }
+  .top h1 { margin:0; font:700 27px/1 var(--f-disp); letter-spacing:.07em;
+    text-transform:uppercase; color:#efe8da; display:flex; align-items:center; gap:11px; }
+  .top h1::before { content:''; width:9px; height:9px; background:var(--acc); flex:0 0 9px; }
+  #sub { font:500 12px/1.4 var(--f-ui); letter-spacing:.02em; color:var(--faint); white-space:nowrap; }
+  #sub a { color:var(--muted); text-decoration:none; border-bottom:1px dotted #454035; }
+  #sub a:hover { color:var(--acc); border-color:var(--acc); }
+
+  /* ---- sticky section nav, built from the card headings ------------------ */
+  #sideNav { position:sticky; top:26px; max-height:calc(100vh - 48px);
+    display:flex; flex-direction:column; }
+  #sideNav[hidden] { display:none; }
+  #sideLabel { font:600 10px/1 var(--f-disp); letter-spacing:.34em; text-transform:uppercase;
+    color:var(--faint); margin-bottom:8px; }
+  #sideLinks { flex:1 1 auto; min-height:0; overflow-y:auto; display:flex; flex-direction:column;
+    border-left:1px solid var(--edge);
+    scrollbar-width:thin; scrollbar-color:#3a352c transparent; }
+  #sideLinks::-webkit-scrollbar { width:8px; }
+  #sideLinks::-webkit-scrollbar-thumb { background:#3a352c; border:2px solid #131109; }
+  #sideLinks a { display:block; padding:4px 0 4px 13px; margin-left:-2px; border-left:2px solid transparent;
+    color:var(--muted); text-decoration:none; font:600 11.5px/1.35 var(--f-disp);
+    letter-spacing:.13em; text-transform:uppercase; transition:color .12s ease-out, border-color .12s ease-out; }
+  #sideLinks a:hover { color:var(--ink); }
+  #sideLinks a.now { color:var(--acc); border-left-color:var(--acc); }
+  .sideMini { flex:0 0 auto; margin-top:20px; background:#12100b; border:1px solid var(--edge);
+    padding:10px 12px; font:400 11px/1.55 var(--f-ui); color:var(--faint); }
+  .sideMini b { color:var(--ink); font-weight:500; }
+  .sideMini .host { color:var(--amber); }
+  .sideMini .dot { color:var(--term); }
+
+  main { min-width:0; }
+  .card { position:relative; background:var(--panel); border:1px solid var(--edge);
+    border-top:2px solid #57503f; padding:15px 18px 13px; margin-bottom:18px;
+    scroll-margin-top:20px; }
+  .card::before { content:''; position:absolute; top:-2px; left:0; width:34px; height:2px; background:var(--acc); }
+  .card h2 { font:700 13px/1 var(--f-disp); letter-spacing:.26em; text-transform:uppercase;
+    color:var(--ink); margin:0 0 11px; display:flex; align-items:center; gap:9px; }
+  .card h2::before { content:''; width:7px; height:7px; background:var(--acc); flex:0 0 7px; }
+
   .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
-  input, select { background:#0a0a0a; border:1px solid #444; color:#eee; font:inherit;
-    padding:7px 10px; border-radius:3px; outline-color:#d94a36; }
-  input[type=checkbox] { padding:0; width:auto; accent-color:#d94a36; }
-  #flags label { display:flex; gap:6px; align-items:center; font-size:12px; color:#bbb; cursor:pointer; }
-  .mutGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:8px; margin-bottom:8px; }
-  .mutGrid label { display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border:1px solid #333;
-    border-radius:4px; cursor:pointer; font-size:12px; color:#ccc; }
-  .mutGrid label:hover { border-color:#555; }
-  .mutGrid label.on { border-color:#d94a36; }
-  .mutGrid input { accent-color:#d94a36; margin-top:2px; }
-  .mutGrid b { color:#eee; font-weight:700; display:block; }
-  .mutGrid .live { color:#d94a36; font-size:10px; margin-left:4px; }
+
+  /* ---- controls ---------------------------------------------------------- */
+  input, select { background:#0d0b08; border:1px solid var(--edge); color:var(--ink);
+    font:500 13.5px/1.3 var(--f-disp); letter-spacing:.04em; padding:7px 10px; border-radius:0; }
+  input:focus, select:focus { border-color:var(--acc); outline:none; }
+  input::placeholder { color:var(--faint); }
+  input[type=checkbox] { padding:0; width:auto; accent-color:var(--acc); }
+  #flags label { display:flex; gap:7px; align-items:center; font-size:12.5px; color:#b8b0a0;
+    cursor:pointer; padding:2px 6px 2px 0; }
+  #flags label:hover { color:var(--ink); }
+
+  /* ---- buttons: primary = full bleed orange, ghost = warm steel ---------- */
+  button { font:600 12.5px/1 var(--f-disp); letter-spacing:.14em; text-transform:uppercase;
+    color:#fff; background:linear-gradient(180deg, #d94f30, #b53a22);
+    border:1px solid #e0684a; border-bottom-width:2px; border-bottom-color:#7d2417;
+    padding:8px 16px; cursor:pointer; transition:filter .12s ease-out; border-radius:0; }
+  button:hover:not(:disabled) { filter:brightness(1.12); }
+  button:active:not(:disabled) { transform:translateY(1px); }
+  button:disabled { background:#221f19; color:#59534a; border:1px solid #2a261f;
+    border-bottom-width:1px; cursor:default; filter:none; transform:none; }
+  button.ghost { background:#1d1a14; border:1px solid #3a352a; border-bottom-width:1px;
+    color:var(--muted); }
+  button.ghost:hover:not(:disabled) { color:var(--ink); border-color:var(--acc-dim); filter:none; }
+  button.ghost:disabled { background:#1a1813; color:#524c42; border-color:#262218; }
+  button.arming { background:#2a2110 !important; border-color:var(--amber) !important;
+    color:var(--amber) !important; filter:none !important; }
+  /* custom native-file-input button: the real input stays inside but hidden */
+  .filebtn { display:inline-flex; align-items:center; font:600 12.5px/1 var(--f-disp);
+    letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+    background:#1d1a14; border:1px solid #3a352a; padding:8px 16px; cursor:pointer; }
+  .filebtn:hover { color:var(--ink); border-color:var(--acc-dim); }
+  .filebtn input { display:none; }
+  .armnote { font:600 10px/1 var(--f-disp); letter-spacing:.12em; text-transform:uppercase;
+    color:var(--amber); text-indent:0; }
+
+  /* ---- generic tables (status players, pak list) -------------------------- */
+  table { border-collapse:collapse; font-size:12px; width:100%; }
+  th, td { text-align:left; padding:4px 10px 4px 0; color:#b8b0a0; }
+  th { color:var(--faint); font:600 10px/1.4 var(--f-disp); text-transform:uppercase;
+    letter-spacing:.18em; }
+  td b { color:var(--ink); font-weight:500; }
+
+  /* ---- rules grid --------------------------------------------------------- */
   .setGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
-  .setGrid .cell { border:1px solid #1f1f1f; border-radius:4px; padding:8px 10px; }
-  .setGrid label { color:#999; font-size:11px; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px; }
-  .setGrid .cell input, .setGrid .cell select { width:100%; box-sizing:border-box; }
-  .setGrid .note { color:#666; font-size:10px; margin-top:4px; line-height:1.35; }
-  .setGrid .cell.latched .note b { color:#d9a236; }
-  .setGrid .cell.dirty { border-color:#d94a36; }
-  .setGrid .cell.dirty label::after { content:' changed'; color:#d94a36; font-size:9px; letter-spacing:0; text-transform:lowercase; }
-  .setGrid .cell.adv { opacity:.82; border:1px dashed #4a4442; }
-  .setGrid .cell.adv label::after { content:' preset'; color:#d94a36; font-size:9px; letter-spacing:0; text-transform:lowercase; }
-  .setGrid .cell.wide { grid-column: 1 / -1; display:flex; gap:16px; align-items:center; }
+  .setGrid .cell { border:1px solid #262117; background:#12100c; padding:9px 11px; }
+  .setGrid .cell label { color:var(--faint); font:600 10.5px/1 var(--f-disp);
+    text-transform:uppercase; letter-spacing:.16em; display:block; margin-bottom:6px; }
+  .setGrid .cell input, .setGrid .cell select { width:100%; }
+  .setGrid .note { color:var(--faint); font:400 10.5px/1.4 var(--f-ui); margin-top:5px; }
+  .setGrid .cell.latched .note b { color:var(--amber); font-weight:600; }
+  .setGrid .cell.dirty { border-color:var(--acc); }
+  .setGrid .cell.dirty label::after { content:' changed'; color:var(--acc); font-size:9px;
+    letter-spacing:.05em; text-transform:lowercase; font-family:var(--f-ui); }
+  .setGrid .cell.adv { opacity:.85; border:1px dashed #41392a; }
+  .setGrid .cell.adv label::after { content:' preset'; color:var(--amber); font-size:9px;
+    letter-spacing:.05em; text-transform:lowercase; font-family:var(--f-ui); }
+  .setGrid .cell.wide { grid-column:1 / -1; display:flex; gap:16px; align-items:center; }
   .setGrid .cell.wide label { margin:0; white-space:nowrap; }
   .setGrid .cell.wide input, .setGrid .cell.wide select { width:170px; }
   .setGrid .cell.wide .note { margin:0; flex:1; }
-  .lbTable { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px; }
-  .lbTable td, .lbTable th { padding:4px 6px; border-bottom:1px solid #1f1f1f; text-align:left; }
-  .lbTable th { color:#888; font-weight:400; font-size:10px; text-transform:uppercase; letter-spacing:1px; }
-  .lbTable td.n { text-align:right; color:#bbb; }
-  .lbTable .also { color:#777; font-size:11px; }
+
+  /* ---- leaderboard --------------------------------------------------------- */
+  .lbTable { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:10px;
+    table-layout:fixed; }
+  .lbTable td, .lbTable th { padding:4px 6px; border-bottom:1px solid #221e16; text-align:left;
+    overflow-wrap:break-word; }
+  .lbTable th { color:var(--faint); font:600 10px/1.4 var(--f-disp); text-transform:uppercase;
+    letter-spacing:.16em; }
+  .lbTable th.n, .lbTable td.n { text-align:right; }
+  .lbTable td.n { color:#c5bdae; font:500 12px/1.3 var(--f-mono); }
+  .lbTable .also { color:var(--faint); font-size:11px; }
   .lbTable button, .lbTable select { padding:3px 8px; font-size:11px; }
-  .lbScroll { max-height:340px; overflow:auto; margin-bottom:8px; }
+  .lbScroll { max-height:340px; overflow:auto; margin-bottom:8px;
+    scrollbar-width:thin; scrollbar-color:#3a352c transparent; }
   .lbUndo { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
-  .lbUndo span { border:1px solid #333; border-radius:3px; padding:2px 6px; font-size:11px; color:#bbb; }
-  .lbUndo button { padding:0 6px; margin-left:6px; font-size:11px; background:#222; color:#bbb; }
-  button { background:#d94a36; border:0; color:#fff; font:inherit; padding:7px 14px;
-    cursor:pointer; border-radius:3px; text-transform:uppercase; letter-spacing:1px; }
-  button:disabled { background:#26262a; color:#666; border:1px solid #333; cursor:default; }
-  button.ghost:disabled { background:#1a1a1a; color:#555; }
-  button.ghost { background:#222; color:#bbb; }
-  table { border-collapse:collapse; font-size:12px; width:100%; }
-  th, td { text-align:left; padding:4px 10px 4px 0; color:#bbb; }
-  th { color:#777; font-weight:400; text-transform:uppercase; font-size:10px; }
-  #out { background:#05070a; border:1px solid #244; color:#7c6; font-size:11px; line-height:1.5;
-    padding:8px 10px; white-space:pre-wrap; max-height:300px; overflow:auto; min-height:60px; }
-  #st { font-size:12px; color:#999; min-height:16px; }
-  .kv { color:#999; font-size:12px; }
-  .kv b { color:#ddd; font-weight:400; }
-  /* game-mode presets */
-  .presetGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px; margin-bottom:8px; }
-  .preset { background:#0a0a0a; border:1px solid #333; border-radius:3px; padding:10px 12px; text-align:left;
-    text-transform:none; letter-spacing:0; color:#ddd; display:flex; flex-direction:column; gap:4px; }
-  .preset:hover:not(:disabled) { border-color:#777; }
-  .preset.active { border-color:#d94a36; }
-  .preset b { font-size:13px; font-weight:700; }
-  .preset span { font-size:11px; color:#999; line-height:1.4; }
-  .preset:disabled { background:#0a0a0a; color:#666; }
+  .lbUndo span { border:1px solid var(--edge); background:#12100b; padding:2px 7px;
+    font-size:11px; color:var(--muted); display:inline-flex; gap:7px; align-items:center; }
+  .lbUndo button { padding:0 7px; margin-left:0; font-size:10.5px; background:transparent;
+    border:1px solid var(--edge); color:var(--muted); }
+  .lbUndo button:hover { color:var(--ink); border-color:var(--acc-dim); filter:none; }
+
+  /* ---- console output ------------------------------------------------------- */
+  #out { background:#0c0f0a; border:1px solid #27301f; color:var(--term);
+    font:400 11px/1.55 var(--f-mono); padding:9px 11px; white-space:pre-wrap;
+    max-height:300px; overflow:auto; min-height:60px;
+    scrollbar-width:thin; scrollbar-color:#33402a transparent; }
+  #out::-webkit-scrollbar, .lbScroll::-webkit-scrollbar, #mapGrid::-webkit-scrollbar,
+  .peMaps::-webkit-scrollbar { width:10px; height:10px; }
+  #out::-webkit-scrollbar-thumb, .lbScroll::-webkit-scrollbar-thumb,
+  #mapGrid::-webkit-scrollbar-thumb, .peMaps::-webkit-scrollbar-thumb {
+    background:#3a352c; border:2px solid #131109; border-radius:5px; }
+  #out::-webkit-scrollbar-track, .lbScroll::-webkit-scrollbar-track,
+  #mapGrid::-webkit-scrollbar-track, .peMaps::-webkit-scrollbar-track { background:transparent; }
+  #st { font:400 12px/1.5 var(--f-ui); color:var(--muted); min-height:17px; }
+  .kv { color:var(--muted); font:400 12px/1.5 var(--f-ui); }
+  .kv b { color:var(--ink); font-weight:500; }
+  .kv code, span[style*="monospace"] { font:500 11px/1 var(--f-mono); color:var(--amber); }
+
+  /* ---- game-mode presets ----------------------------------------------------- */
+  .presetGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr));
+    gap:10px; margin-bottom:8px; }
+  .preset { background:#0d0b08; border:1px solid var(--edge); padding:10px 12px; text-align:left;
+    text-transform:none; letter-spacing:0; font-family:var(--f-ui); font-size:12px;
+    color:var(--muted); display:flex; flex-direction:column; gap:4px; border-radius:0;
+    border-bottom-width:2px; }
+  .preset:hover:not(:disabled) { border-color:var(--edge-hi); color:var(--ink); filter:none; }
+  .preset.active { border-color:var(--acc); border-bottom-color:var(--acc);
+    color:var(--ink); background:linear-gradient(180deg, #1c150e, #120e09); }
+  .preset b { font:700 13.5px/1.1 var(--f-disp); letter-spacing:.08em; text-transform:uppercase;
+    color:#efe8da; }
+  .preset span { font-size:11px; color:var(--faint); line-height:1.4; font-family:var(--f-ui); }
+  .preset:disabled { background:#0d0b08; color:var(--faint); }
+  .preset:disabled b { color:var(--faint); }
   .presetCard { display:flex; flex-direction:column; gap:4px; }
   .presetCard .preset { flex:1; }
-  .presetCard .edit { padding:3px 8px; font-size:11px; align-self:flex-start; }
-  #presetEditor { border:1px solid #333; border-radius:3px; padding:10px 12px; margin-bottom:10px; background:#0a0a0a; }
+  .presetCard .edit { padding:3px 8px; font-size:10.5px; align-self:flex-start; }
+  #presetEditor { border:1px solid var(--edge); background:#0d0b08; padding:10px 12px;
+    margin-bottom:10px; }
   #presetEditor[hidden] { display:none; }
-  .peMaps { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:4px 12px;
-    max-height:260px; overflow:auto; }
-  .peMaps label { display:flex; gap:6px; align-items:center; font-size:12px; color:#ccc; cursor:pointer; }
-  .peMaps input { accent-color:#d94a36; }
-  .peMaps .n { color:#d94a36; min-width:1.6em; font-size:11px; }
-  /* map gallery: click a levelshot to pick the map */
-  #mapGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(112px, 1fr)); gap:8px;
-    max-height:340px; overflow:auto; margin-bottom:10px; padding-right:4px; }
-  .mapTile { background:#0a0a0a; border:1px solid #333; border-radius:3px; padding:0; cursor:pointer;
-    text-transform:none; letter-spacing:0; color:#ccc; text-align:left; overflow:hidden; }
-  .mapTile:hover { border-color:#777; }
-  .mapTile.sel { border-color:#d94a36; outline:1px solid #d94a36; }
-  .mapTile.now span::after { content:' \00B7  now'; color:#d94a36; }
-  .mapTile .nobots { display:block; font-size:10px; color:#d9a036; padding:0 6px 4px; }
-  .mapTile img, .mapTile .noshot { width:100%; aspect-ratio:4/3; object-fit:cover; display:block;
-    background:#181818; }
-  .mapTile .noshot { display:flex; align-items:center; justify-content:center; color:#777; font-size:11px; }
-  .mapTile span { display:block; font-size:12px; padding:4px 6px; white-space:nowrap; overflow:hidden;
-    text-overflow:ellipsis; }
+  .peMaps { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+    gap:4px 12px; max-height:260px; overflow:auto;
+    scrollbar-width:thin; scrollbar-color:#3a352c transparent; }
+  .peMaps label { display:flex; gap:6px; align-items:center; font-size:12px;
+    color:#b8b0a0; cursor:pointer; }
+  .peMaps input { accent-color:var(--acc); }
+  .peMaps .n { color:var(--acc); min-width:1.6em; font:600 11px/1 var(--f-mono); }
+
+  /* ---- mutator tiles ----------------------------------------------------------- */
+  .mutGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+    gap:8px; margin-bottom:8px; }
+  .mutGrid label { display:flex; gap:8px; align-items:flex-start; padding:8px 10px;
+    border:1px solid #262117; background:#12100c; cursor:pointer; font-size:12px;
+    color:var(--muted); }
+  .mutGrid label:hover { border-color:var(--edge-hi); color:var(--ink); }
+  .mutGrid label.on { border-color:var(--acc); color:var(--ink);
+    background:linear-gradient(180deg, #1c150e, #120e09); }
+  .mutGrid input { accent-color:var(--acc); margin-top:2px; }
+  .mutGrid b { color:#efe8da; font:700 12.5px/1.2 var(--f-disp); letter-spacing:.06em;
+    text-transform:uppercase; display:block; }
+  .mutGrid .live { color:var(--acc); font:600 9px/1 var(--f-disp); letter-spacing:.1em;
+    text-transform:uppercase; margin-left:6px; }
+
+  /* ---- map gallery: click a levelshot to pick the map -------------------------- */
+  #mapGrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(112px, 1fr));
+    gap:8px; max-height:340px; overflow:auto; margin-bottom:10px; padding-right:4px;
+    scrollbar-width:thin; scrollbar-color:#3a352c transparent; }
+  .mapTile { background:#0d0b08; border:1px solid var(--edge); padding:0; cursor:pointer;
+    text-transform:none; letter-spacing:0; font-family:var(--f-ui); color:var(--muted);
+    text-align:left; overflow:hidden; border-radius:0; border-bottom-width:2px;
+    border-bottom-color:var(--edge); }
+  .mapTile:hover { border-color:var(--edge-hi); filter:none; }
+  .mapTile.sel { border-color:var(--acc); outline:1px solid var(--acc); }
+  .mapTile.now span::after { content:' · now'; color:var(--acc); }
+  .mapTile .nobots { display:block; font-size:10px; color:var(--amber); padding:0 6px 4px; }
+  .mapTile img, .mapTile .noshot { width:100%; aspect-ratio:4/3; object-fit:cover;
+    display:block; background:#16130e; }
+  .mapTile .noshot { display:flex; align-items:center; justify-content:center;
+    color:var(--faint); font-size:11px; }
+  .mapTile span { display:block; font:600 11.5px/1.2 var(--f-disp); letter-spacing:.04em;
+    padding:4px 7px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--ink); }
+
+  /* ---- narrow screens: the section nav folds into a horizontal chipbar --------- */
+  @media (max-width: 920px) {
+    body { display:block; padding:20px 16px 70px; }
+    .top { flex-wrap:wrap; }
+    #sideNav { position:sticky; top:0; z-index:5; max-height:none; display:block;
+      background:rgba(11,10,8,.96);
+      margin:0 -16px 18px; padding:8px 16px; border-bottom:1px solid var(--edge);
+      backdrop-filter:blur(4px); }
+    #sideLabel, .sideMini { display:none; }
+    #sideLinks { flex:none; overflow:visible; flex-direction:row; flex-wrap:wrap;
+      border-left:0; gap:2px 14px; }
+    #sideLinks a { padding:2px 0; margin-left:0; border-left:0;
+      border-bottom:2px solid transparent; }
+  }
 </style>
 </head>
 <body>
-<h1>Server Admin</h1>
-<div id="sub"><a href="index.html">← back to the game</a> · <a href="stats.html">leaderboard</a></div>
+<header class="top">
+  <h1>Server Admin</h1>
+  <div id="sub"><a href="index.html">← back to the game</a> · <a href="stats.html">leaderboard</a></div>
+</header>
 
+<nav id="sideNav" hidden>
+  <div id="sideLabel">Sections</div>
+  <div id="sideLinks"></div>
+  <div id="sideMini" class="sideMini">unlock to see live server status here</div>
+</nav>
+
+<main>
 <div class="card">
   <h2>Access</h2>
   <div class="row">
@@ -182,7 +354,8 @@
 <div class="card">
   <h2>Upload maps</h2>
   <div class="row">
-    <input id="pakFiles" type="file" accept=".pk3" multiple>
+    <label class="filebtn">Choose pk3 files<input id="pakFiles" type="file" accept=".pk3" multiple></label>
+    <span class="kv" id="pakCount"></span>
     <button id="pakUpload">Upload</button>
     <button class="ghost" id="pakRestart" title="the game server only loads new pk3s when it starts">Restart server to load</button>
   </div>
@@ -199,11 +372,11 @@
     <a href="stats.html" class="kv">open leaderboard ↗</a>
   </div>
   <div class="lbScroll"><table class="lbTable">
-    <thead><tr><th>player</th><th>frags</th><th>deaths</th><th></th></tr></thead>
+    <thead><tr><th style="width:56%">player</th><th class="n" style="width:10%">frags</th><th class="n" style="width:10%">deaths</th><th style="width:24%"></th></tr></thead>
     <tbody id="lbPlayers"></tbody>
   </table></div>
   <div class="lbScroll" style="max-height:220px"><table class="lbTable">
-    <thead><tr><th>recent match</th><th>top</th><th></th></tr></thead>
+    <thead><tr><th style="width:54%">recent match</th><th style="width:26%">top</th><th style="width:20%"></th></tr></thead>
     <tbody id="lbMatches"></tbody>
   </table></div>
   <div id="lbUndo" class="lbUndo"></div>
@@ -263,7 +436,7 @@
   <div class="row">
     <input id="cmd" size="40" spellcheck="false" placeholder="cvarlist sv_…">
     <button id="run">Run</button>
-    <button class="ghost" data-cmd="quit" id="quitBtn">Restart server</button>
+    <button class="ghost" id="quitBtn" title="sends the quit rcon command">Restart server</button>
   </div>
 </div>
 
@@ -272,6 +445,7 @@
   <div id="out"></div>
   <div id="st"></div>
 </div>
+</main>
 
 <script type="module">
 const $ = (id) => document.getElementById(id);
@@ -306,6 +480,81 @@ async function unlock() {
 }
 $('unlock').addEventListener('click', unlock);
 $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+
+// --- two-step confirmations instead of native confirm() dialogs ---------------
+//   arm(btn, fn)     — plain-label buttons; the label flips to "sure? click again"
+//   armCard(btn, fn) — buttons with inner markup (presets); shows a note instead
+// A first click arms the button in amber; a second click within 3.5 s runs it.
+function arm(btn, fn) {
+  if (btn.dataset.armed) { disarm(btn); fn(); return; }
+  btn.dataset.armed = '1';
+  btn.dataset.armLabel = btn.textContent;
+  btn.classList.add('arming');
+  btn.textContent = 'sure? click again';
+  btn.dataset.armT = String(setTimeout(() => disarm(btn), 3500));
+}
+function disarm(btn) {
+  clearTimeout(+btn.dataset.armT);
+  delete btn.dataset.armed;
+  btn.classList.remove('arming');
+  if (btn.dataset.armLabel !== undefined) {
+    btn.textContent = btn.dataset.armLabel;
+    delete btn.dataset.armLabel;
+  }
+}
+function armCard(btn, fn) {
+  if (btn.dataset.armed) { disarmCard(btn); fn(); return; }
+  btn.dataset.armed = '1';
+  btn.classList.add('arming');
+  const note = document.createElement('span');
+  note.className = 'armnote';
+  note.textContent = 'again — the map reloads';
+  btn.append(note);
+  btn.dataset.armT = String(setTimeout(() => disarmCard(btn), 3500));
+}
+function disarmCard(btn) {
+  clearTimeout(+btn.dataset.armT);
+  delete btn.dataset.armed;
+  btn.classList.remove('arming');
+  const note = btn.querySelector('.armnote');
+  if (note) note.remove();
+}
+
+// --- section nav: links built from the card headings, with scroll spy ---------
+const sideNav = $('sideNav');
+const sideLinks = document.getElementById('sideLinks');
+const sideMini = document.getElementById('sideMini');
+const cardIndex = [...document.querySelectorAll('.card')]
+  .filter((c) => c.querySelector('h2'))
+  .map((card) => {
+    const label = card.querySelector('h2').textContent.replace(/\s*\(.*\)\s*/, '').trim();
+    card.id = 'sec-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const a = document.createElement('a');
+    a.href = '#' + card.id;
+    a.textContent = label;
+    return { card, a };
+  });
+sideLinks.replaceChildren(...cardIndex.map((x) => x.a));
+sideNav.hidden = false;
+function spyCards() {
+  let current = cardIndex[0] && cardIndex[0].card;
+  // fully scrolled to the bottom: the last card can never reach the spy line,
+  // so claim it explicitly (short cards like Output otherwise stay unlit)
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+    current = cardIndex[cardIndex.length - 1].card;
+  } else {
+    for (const { card } of cardIndex) {
+      if (card.getBoundingClientRect().top <= 120) current = card;
+    }
+  }
+  for (const { card, a } of cardIndex) a.classList.toggle('now', !!(current && card === current));
+  // if the nav itself had to scroll (short viewport), keep the active link in view
+  const now = cardIndex.find((x) => x.a.classList.contains('now'));
+  if (now) now.a.scrollIntoView({ block: 'nearest' });
+}
+window.addEventListener('scroll', () => requestAnimationFrame(spyCards), { passive: true });
+spyCards();
+
 // coming back to the panel in the same tab: the remembered password is
 // already in the box, so unlock right away instead of needing a click
 if ($('pw').value) { unlock(); }
@@ -672,18 +921,30 @@ async function refresh() {
         tile.classList.toggle('now', tile.querySelector('span').textContent === now);
       }
     }
-    $('status').innerHTML =
+    const sHtml =
       `<b>${escapeHtml(info.sv_hostname || '?')}</b> · map <b>${escapeHtml(info.mapname || '?')}</b>` +
       ` · gametype <b>${gametype(info.g_gametype)}</b>` +
       ` · players <b>${status.players.length}/${info.sv_maxclients ?? '?'}</b>` +
       ` · frag/timelimit <b>${info.fraglimit ?? '?'}/${info.timelimit ?? '?'}</b>`;
-    $('players').innerHTML =
+    // only touch the DOM when something changed — identical re-renders every
+    // 5 s otherwise shift their re-laid-out content and the page jumps
+    if ($('status').innerHTML !== sHtml) $('status').innerHTML = sHtml;
+    sideMini.innerHTML =
+      `<span class="host">${escapeHtml(info.sv_hostname || '?')}</span><br>` +
+      `map <b>${escapeHtml(info.mapname || '?')}</b> · ` +
+      `<b>${status.players.length}/${info.sv_maxclients ?? '?'}</b> players · ` +
+      `<span style="color:var(--term)">●</span> ${escapeHtml(gametype(info.g_gametype))}`;
+    const pHtml =
       '<tr><th>#</th><th>score</th><th>ping</th><th>name</th><th></th></tr>' +
       (status.players.map((p, i) =>
         `<tr><td>${i}</td><td>${p.score}</td><td>${p.ping === 'bot' ? 'bot' : p.ping}</td>` +
         `<td>${escapeHtml(p.name)}</td>` +
         `<td><button class="ghost" style="padding:2px 8px" data-kick="${i}">kick</button></td></tr>`).join('') || '');
-    for (const b of document.querySelectorAll('button[data-kick]')) {
+    if ($('players').innerHTML !== pHtml) $('players').innerHTML = pHtml;
+    const kickBtns = [...document.querySelectorAll('button[data-kick]')];
+    for (const b of kickBtns) {
+      if (b.dataset.wired) continue;          // persistent rows: don't stack listeners
+      b.dataset.wired = '1';
       b.addEventListener('click', async () => { await rcon(`clientkick ${b.dataset.kick}`); refresh(); });
     }
   } catch (e) {
@@ -768,7 +1029,7 @@ async function loadPresets() {
       b.innerHTML = `<b>${escapeHtml(p.name)}</b><span>${escapeHtml(p.description)}</span>` +
         `<span>chat: !mode ${escapeHtml([p.id === 'instagib' ? 'insta' : p.id, ...(p.aliases || [])].slice(0, 3).join(' / '))}</span>` +
         `<span>${p.maps.length ? `${p.maps.length} maps${p.custom ? ' (your list)' : ''} · starts on ${escapeHtml(p.maps[0])}` : 'no maps available'}</span>`;
-      b.addEventListener('click', () => applyPreset(p));
+      b.addEventListener('click', () => { if (!b.disabled) armCard(b, () => applyPreset(p)); });
       const e = document.createElement('button');
       e.type = 'button';
       e.className = 'ghost edit';
@@ -837,8 +1098,8 @@ $('peCancel').addEventListener('click', () => { $('presetEditor').hidden = true;
 
 async function applyPreset(p) {
   if (!$('pw').value) { $('presetState').textContent = 'unlock with the password first'; return; }
-  if (!confirm(`Switch to ${p.name}? The map reloads and everyone reconnects for a moment.`)) return;
-  $('presetState').textContent = `switching to ${p.name}…`;
+  // the two-step confirm happens on the preset button itself (armCard)
+  $('presetState').textContent = `switching to ${p.name}… (the map reloads and everyone reconnects for a moment)`;
   for (const b of $('presets').children) b.disabled = true;
   try {
     const response = await fetch('/admin/api/preset', {
@@ -894,6 +1155,7 @@ $('chatVote').addEventListener('click', async (e) => {
 // --- mutators (gateway /admin/api/mutators) ----------------------------------------
 
 let mutators = [];
+let mutatorsJson = '';
 
 function renderMutators() {
   $('mutators').innerHTML = '';
@@ -926,6 +1188,9 @@ async function loadMutators() {
     const response = await fetch('/admin/api/mutators');
     const body = await response.json().catch(() => ({}));
     if (!response.ok) { $('mutState').textContent = body.error || `HTTP ${response.status}`; return; }
+    const next = JSON.stringify(body.mutators);
+    if (next === mutatorsJson) return;    // unchanged every 10 s: skip the flicker
+    mutatorsJson = next;
     mutators = body.mutators;
     renderMutators();
   } catch (e) {
@@ -983,14 +1248,16 @@ function renderLeaderboard() {
     const into = document.createElement('select');
     into.append(new Option('merge into…', ''));
     for (const q of lb.players) if (q.key !== p.key) into.append(new Option(q.name, q.name));
-    into.addEventListener('change', () => {
-      if (into.value && confirm(`Count "${p.name}" as "${into.value}" from now on (all their stats)?`)) {
-        lbChange('merge', { from: p.name, into: into.value });
-      } else into.value = '';
+    // explicit merge button instead of firing on select change; armed in two steps
+    const go = lbButton('merge', () => {
+      arm(go, () => { lbChange('merge', { from: p.name, into: into.value }); into.value = ''; });
     });
-    act.append(into, ' ', lbButton('remove', () => {
-      if (confirm(`Remove "${p.name}" from the leaderboard, with every kill they were in?`)) lbChange('remove', { name: p.name });
-    }));
+    go.hidden = true;
+    into.addEventListener('change', () => { go.hidden = !into.value; disarm(go); });
+    const removeBtn = lbButton('remove', () => {
+      arm(removeBtn, () => lbChange('remove', { name: p.name }));
+    });
+    act.append(into, ' ', go, ' ', removeBtn);
     tr.append(name, kills, deaths, act);
     return tr;
   }));
@@ -1005,9 +1272,10 @@ function renderLeaderboard() {
     top.className = 'also';
     top.textContent = m.scores.slice(0, 3).map((x) => `${x.name} ${x.score}`).join(' · ');
     const act = document.createElement('td');
-    act.append(lbButton('remove', () => {
-      if (confirm(`Remove the ${m.map} match from the stats?`)) lbChange('removeMatch', { id: m.id });
-    }));
+    const rm = lbButton('remove', () => {
+      arm(rm, () => lbChange('removeMatch', { id: m.id }));
+    });
+    act.append(rm);
     tr.append(what, top, act);
     return tr;
   }));
@@ -1055,9 +1323,7 @@ async function lbChange(action, extra = {}) {
 }
 
 $('lbFilter').addEventListener('input', renderLeaderboard);
-$('lbReset').addEventListener('click', () => {
-  if (confirm('Reset the leaderboard? Everything played so far stops counting (Undo reset brings it back).')) lbChange('reset');
-});
+$('lbReset').addEventListener('click', function () { arm(this, () => lbChange('reset')); });
 $('lbUndoReset').addEventListener('click', () => lbChange('undoReset'));
 
 // --- map pk3 upload / delete (gateway /admin/api/paks) ----------------------------
@@ -1082,7 +1348,7 @@ async function loadPaks() {
         `<td>${escapeHtml(f.maps.length > 4 ? `${f.maps.slice(0, 4).join(', ')} +${f.maps.length - 4}` : f.maps.join(', ') || '—')}</td>` +
         `<td>${f.custom && body.writable ? `<button class="ghost" style="padding:2px 8px" data-delpak="${escapeHtml(f.name)}">delete</button>` : ''}</td></tr>`).join('');
     for (const b of document.querySelectorAll('button[data-delpak]')) {
-      b.addEventListener('click', () => deletePak(b.dataset.delpak));
+      b.addEventListener('click', () => arm(b, () => deletePak(b.dataset.delpak)));
     }
   } catch (e) {
     $('pakState').textContent = 'pk3 list failed: ' + (e && e.message || e);
@@ -1111,6 +1377,10 @@ function uploadPak(file) {
   });
 }
 
+$('pakFiles').addEventListener('change', () => {
+  const n = $('pakFiles').files.length;
+  $('pakCount').textContent = n ? `${n} file${n > 1 ? 's' : ''} ready` : '';
+});
 $('pakUpload').addEventListener('click', async () => {
   const files = [...$('pakFiles').files];
   if (!files.length) { $('pakState').textContent = 'choose one or more .pk3 files first'; return; }
@@ -1118,6 +1388,7 @@ $('pakUpload').addEventListener('click', async () => {
   const results = [];
   for (const file of files) results.push(await uploadPak(file));
   $('pakFiles').value = '';
+  $('pakCount').textContent = '';
   $('pakUpload').disabled = false;
   out('> upload\n' + results.join('\n') + '\n(restart the server to load new maps)');
   await loadPaks();
@@ -1127,7 +1398,7 @@ $('pakUpload').addEventListener('click', async () => {
 });
 
 async function deletePak(name) {
-  if (!confirm(`Delete ${name} from the server? Players on one of its maps will be dropped after the restart.`)) return;
+  // destructive: the delete button is armed in two steps before we get here
   const response = await fetch(`/admin/api/paks/${encodeURIComponent(name)}`, {
     method: 'DELETE',
     headers: { 'x-admin-password': $('pw').value },
@@ -1138,11 +1409,19 @@ async function deletePak(name) {
   loadMapList();
 }
 
-$('pakRestart').addEventListener('click', async () => {
-  if (!confirm('Restart the game server now? Everyone is disconnected for ~10 seconds.')) return;
-  await rcon('quit');
-  $('st').textContent = 'server restarting — it comes back in about 10 seconds';
-  setTimeout(() => { loadMapList(); refresh(); }, 12000);
+$('pakRestart').addEventListener('click', function () {
+  arm(this, async () => {
+    await rcon('quit');
+    $('st').textContent = 'server restarting — it comes back in about 10 seconds';
+    setTimeout(() => { loadMapList(); refresh(); }, 12000);
+  });
+});
+$('quitBtn').addEventListener('click', function () {
+  arm(this, async () => {
+    await rcon('quit');
+    $('st').textContent = 'shutdown sent — the container comes back in a few seconds';
+    setTimeout(() => { loadMapList(); refresh(); }, 12000);
+  });
 });
 
 $('refresh').addEventListener('click', refresh);
