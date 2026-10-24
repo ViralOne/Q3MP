@@ -548,7 +548,8 @@ const gameId = (params.get('game') || 'baseq3').replace(/[^\w]/g, '') || 'baseq3
 const files = gameId === 'baseq3'
   ? [...Array.from({ length: 9 }, (_, i) => `baseq3/pak${i}.pk3`), 'baseq3/zz-cgame.pk3']
   : [`demoq3/pak0.pk3`,
-     `demoq3/map_oxodm1.pk3`, `demoq3/map_oxodm6.pk3`, `demoq3/padcrash.pk3`];
+     `demoq3/map_oxodm1.pk3`, `demoq3/map_oxodm6.pk3`, `demoq3/padcrash.pk3`,
+     `demoq3/fff.pk3`, `demoq3/lun3dm5.pk3`, `demoq3/teddm1.pk3`, `demoq3/q3gwdm1.pk3`];
 
 // The asset set a join needs. Pure servers only accept the exact paks they run,
 // so official q3js.com servers (built on q3js's own baseq3 set — a different
