@@ -20,7 +20,8 @@ const DUEL = (m) => /^(pro-)?q3tourney\d+$/.test(m);
 // (listed first by default, so a full rotation never crowds them out)
 const CUSTOM_DM = (m) => !DM(m) && !CTF(m) && !DUEL(m) && !/^test_|^q3dm0$/.test(m);
 
-const ROTATION_MAX = 16;
+// a rotation is a vstr chain written to q3preset.cfg, so it can be long
+const ROTATION_MAX = 64;
 
 // q3dm2 before q3dm10
 const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });

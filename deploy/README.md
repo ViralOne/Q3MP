@@ -170,7 +170,7 @@ The admin panel's *Game mode* card switches the whole server with one click:
 **Free for all**, **Team deathmatch**, **Capture the flag**, **Duel**,
 **Freeze tag**, **Instagib**, **Rocket arena**, **Excessive** or **Gun game**. Each
 sets the gametype and its limits, builds a map rotation (`d1`…`dN` vstr chain,
-up to 16 maps) from the maps in the server paks, and loads the first map.
+up to 64 maps) from the maps in the server paks, and loads the first map.
 **edit maps** picks a mode's rotation yourself — tick maps in play order,
 custom maps included; the choice is saved in `PRESETS_FILE` (all-in-one:
 `/state/gateway/presets.json`, split stack: the `gateway-state` volume).

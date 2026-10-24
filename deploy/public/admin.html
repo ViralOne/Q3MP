@@ -1248,15 +1248,12 @@ function renderLeaderboard() {
     const into = document.createElement('select');
     into.append(new Option('merge into…', ''));
     for (const q of lb.players) if (q.key !== p.key) into.append(new Option(q.name, q.name));
-    // explicit merge button instead of firing on select change; armed in two steps
-    const go = lbButton('merge', () => {
-      arm(go, () => { lbChange('merge', { from: p.name, into: into.value }); into.value = ''; });
-    });
+    // explicit merge button instead of firing on select change; every
+    // leaderboard change has an undo, so none of them asks twice
+    const go = lbButton('merge', () => { lbChange('merge', { from: p.name, into: into.value }); into.value = ''; });
     go.hidden = true;
-    into.addEventListener('change', () => { go.hidden = !into.value; disarm(go); });
-    const removeBtn = lbButton('remove', () => {
-      arm(removeBtn, () => lbChange('remove', { name: p.name }));
-    });
+    into.addEventListener('change', () => { go.hidden = !into.value; });
+    const removeBtn = lbButton('remove', () => lbChange('remove', { name: p.name }));
     act.append(into, ' ', go, ' ', removeBtn);
     tr.append(name, kills, deaths, act);
     return tr;
@@ -1272,9 +1269,7 @@ function renderLeaderboard() {
     top.className = 'also';
     top.textContent = m.scores.slice(0, 3).map((x) => `${x.name} ${x.score}`).join(' · ');
     const act = document.createElement('td');
-    const rm = lbButton('remove', () => {
-      arm(rm, () => lbChange('removeMatch', { id: m.id }));
-    });
+    const rm = lbButton('remove', () => lbChange('removeMatch', { id: m.id }));
     act.append(rm);
     tr.append(what, top, act);
     return tr;
@@ -1309,7 +1304,8 @@ async function loadLeaderboard() {
 }
 
 async function lbChange(action, extra = {}) {
-  if (!$('pw').value) { $('lbState').textContent = 'unlock with the password first'; return; }
+  if (!$('pw').value) { $('lbState').textContent = 'unlock with the password first (Access card at the top)'; return; }
+  $('lbState').textContent = `${action}…`;
   const response = await fetch('/admin/api/stats', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -1318,12 +1314,12 @@ async function lbChange(action, extra = {}) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) { $('lbState').textContent = body.error || `HTTP ${response.status}`; return; }
   lb = body;
-  $('lbState').textContent = `done: ${action}`;
+  $('lbState').textContent = `done: ${action} — undo below if it was a mistake`;
   renderLeaderboard();
 }
 
 $('lbFilter').addEventListener('input', renderLeaderboard);
-$('lbReset').addEventListener('click', function () { arm(this, () => lbChange('reset')); });
+$('lbReset').addEventListener('click', () => lbChange('reset'));
 $('lbUndoReset').addEventListener('click', () => lbChange('undoReset'));
 
 // --- map pk3 upload / delete (gateway /admin/api/paks) ----------------------------
